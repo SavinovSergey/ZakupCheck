@@ -27,8 +27,15 @@
 python -m venv .venv
 source .venv/bin/activate
 pip install -e .
-# скрипты: scripts/download_law.py, scripts/build_law_corpus.py, …
+
+# Скачать актуальную редакцию 44-ФЗ → data/law/{edition_id}/
+python scripts/download_law.py
+python scripts/download_law.py --list-redactions   # список rdk
+# python scripts/download_law.py --rdk 157
 ```
+
+Артефакты загрузки: `edition.json`, `full_text.txt`, `blocks.jsonl`, `raw/source.html`
+(далее — `scripts/build_law_corpus.py` → NormUnit / Chunk).
 
 ## Лицензия данных
 
