@@ -1,0 +1,46 @@
+# Local data (law corpus, FAS/notice dumps, indexes) — keep empty dirs via .gitkeep
+data/**
+!data/**/
+!data/**/.gitkeep
+
+# Secrets and local env
+.env
+.env.*
+!.env.example
+
+# Models
+*.gguf
+*.bin
+*.ggml
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+dist/
+build/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Caches / IDE
+.cache/
+.hf/
+*.incomplete
+.idea/
+.vscode/
+*.swp
+.DS_Store
+
+# llama.cpp must not live in this repo (install outside; see README)
+llama.cpp/
+
+# Misc
+*.log
+.ipynb_checkpoints/
