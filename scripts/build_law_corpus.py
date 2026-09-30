@@ -1,11 +1,16 @@
-"""Парсинг 44-ФЗ → Edition / NormUnit / Chunk (DESIGN §4.2)."""
+#!/usr/bin/env python3
+"""CLI: blocks.jsonl → norm_units.jsonl + chunks_structural*.jsonl."""
 
-# TODO: реализация
+from __future__ import annotations
 
+import sys
+from pathlib import Path
 
-def main() -> None:
-    raise NotImplementedError("build_law_corpus: ещё не реализовано")
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "src"))
+
+from ingest.law.corpus import main  # noqa: E402
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())
