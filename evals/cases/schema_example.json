@@ -1,0 +1,28 @@
+{
+  "case_id": "fas_2025_ooz_001_a",
+  "edition_id": "2026-08-04",
+  "topic": "ooz_33",
+  "split": "dev",
+  "outcome": "upheld",
+  "complaint_argument": "В описании объекта закупки указан товарный знак без слов «или эквивалент».",
+  "doc_fragment": "…поставка принтера HP LaserJet Pro M404dn…",
+  "doc_locator": {
+    "path": null,
+    "page": null,
+    "char_start": null,
+    "char_end": null,
+    "note": "ООЗ, раздел «Требования к товару»"
+  },
+  "gold_norms": [
+    "44FZ:2026-08-04:art.33:ch.1:p.1"
+  ],
+  "relies_on_bylaw": false,
+  "procurement_id": null,
+  "procurement_url": null,
+  "notice_date": "2025-03-15",
+  "fas_decision_id": null,
+  "fas_decision_url": null,
+  "doc_paths": [],
+  "issue_type": null,
+  "gold_notes": "Пример формата; не реальный кейс. gold_norms сверить с NormUnit после разметки."
+}
