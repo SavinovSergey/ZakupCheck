@@ -293,7 +293,11 @@ def html_to_blocks(source_html: str) -> tuple[str, list[Block]]:
 
 
 def build_urls(nd: str, rdk: int) -> dict[str, str]:
-    doc_url = f"http://pravo.gov.ru/proxy/ips/?doc_itself=&nd={nd}&page=1&rdk={rdk}&link_id=0"
+    # без fulltext=1 ИПС отдаёт урезанный фрагмент (~до ст.48 для 44-ФЗ)
+    doc_url = (
+        f"http://pravo.gov.ru/proxy/ips/?doc_itself=&fulltext=1"
+        f"&nd={nd}&page=1&rdk={rdk}&link_id=0"
+    )
     card_url = (
         f"http://pravo.gov.ru/proxy/ips/?doc_itself=&vkart=card&nd={nd}"
         f"&page=1&rdk={rdk}&intelsearch=&link_id=0"
@@ -338,11 +342,26 @@ def download_edition(
         raise RuntimeError("После разбора HTML получился пустой full_text")
 
     article_titles = sum(1 for b in blocks if b.kind == "article_title")
+    article_nums = sorted(
+        {
+            b.article_hint
+            for b in blocks
+            if b.kind == "article_title" and b.article_hint is not None
+        }
+    )
+    max_article = article_nums[-1] if article_nums else 0
     print(
         f"Parsed blocks={len(blocks)} article_titles={article_titles} "
-        f"chars={len(full_text)}",
+        f"max_article={max_article} chars={len(full_text)}",
         file=sys.stderr,
     )
+    # 44-ФЗ в актуальной редакции идёт примерно до ст.112–114; без fulltext
+    # раньше обрывалось около ст.48.
+    if nd == DEFAULT_ND and max_article < 90:
+        raise RuntimeError(
+            f"Похоже, скачан неполный текст 44-ФЗ (max article={max_article}). "
+            "Проверьте параметр fulltext=1 в URL ИПС."
+        )
 
     digest = hashlib.sha256(full_text.encode("utf-8")).hexdigest()
     out_dir = out_root / edition_id
@@ -377,6 +396,7 @@ def download_edition(
         "stats": {
             "blocks": len(blocks),
             "article_titles": article_titles,
+            "max_article": max_article,
             "chars": len(full_text),
         },
         "redactions_available": [
