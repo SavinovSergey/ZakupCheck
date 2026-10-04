@@ -41,6 +41,13 @@ htmlcov/
 # llama.cpp must not live in this repo (install outside; see README)
 llama.cpp/
 
+# Eval batch download reports (local)
+evals/batch_reports/
+
+# Eval cases — локальная разметка; в git только пример схемы
+evals/cases/*
+!evals/cases/schema_example.json
+
 # Misc
 *.log
 .ipynb_checkpoints/
