@@ -656,7 +656,7 @@ scripts/
   download_law.py
   build_law_corpus.py     # parse → norm_units + chunks
   build_index.py
-  download_fas.py         # позже
+  download_fas.py         # жалоба/извещение ЕИС по номеру → data/raw/fas|notices + текст
   run_eval.py
   bench_llm.sh            # обёртка над llama-bench (бинарник — вне репо)
 data/                     # не в git

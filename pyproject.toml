@@ -12,6 +12,10 @@ dependencies = [
 dev = [
     "pytest>=8.0",
 ]
+fas = [
+    "pypdf>=4.0",
+    "mammoth>=1.8",
+]
 
 [build-system]
 requires = ["setuptools>=68"]

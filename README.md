@@ -32,10 +32,23 @@ pip install -e .
 python scripts/download_law.py
 python scripts/download_law.py --list-redactions   # список rdk
 # python scripts/download_law.py --rdk 157
+
+# Жалоба / извещение ЕИС по номеру → data/raw/fas|notices/ (+ сырой текст; без разметки eval)
+# python scripts/download_fas.py complaint --number 202600132489017625 --insecure
+# python scripts/download_fas.py notice --number 0373100062626000058 --insecure
+# Связать уже скачанные (reuse notice, без повторной загрузки):
+# python scripts/download_fas.py link --complaint-dir data/raw/fas/202600132489017625 --link-only
+# python scripts/download_fas.py complaint --number … --with-notice --link-only
+# Пакетно (список номеров → жалобы + извещения + отчёт в evals/batch_reports/):
+# python scripts/batch_download_fas.py --numbers-file evals/numbers_fas.txt --with-notice --insecure
+# pip install 'zakup-check[fas]'   # PDF (pypdf) + DOCX→Markdown (mammoth)
+# OCR-fallback для сканов: системные tesseract-ocr (+ tessdata-rus) и poppler-utils
+# .doc/.rtf: системный LibreOffice (soffice / libreoffice-writer)
 ```
 
 Артефакты загрузки: `edition.json`, `full_text.txt`, `blocks.jsonl`, `raw/source.html`
 (далее — `scripts/build_law_corpus.py` → NormUnit / Chunk).
+Сырые данные: `data/raw/fas/{номер_жалобы}/`, `data/raw/notices/{regNumber}/`.
 
 ## Лицензия данных
 
