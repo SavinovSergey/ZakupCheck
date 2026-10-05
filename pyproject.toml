@@ -16,6 +16,9 @@ fas = [
     "pypdf>=4.0",
     "mammoth>=1.8",
 ]
+retrieval = [
+    "rank-bm25>=0.2.2",
+]
 
 [build-system]
 requires = ["setuptools>=68"]
