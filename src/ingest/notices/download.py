@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import sys
 import time
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
@@ -68,9 +69,10 @@ def probe_notice_kind(
         urls = notice_urls(procurement_id, kind)
         for key in ("documents", "common"):
             url = urls[key]
+            print(f"probe notice {procurement_id}: try {kind}/{key} …", file=sys.stderr)
             try:
                 data, _ctype, final = http_get(
-                    url, timeout=timeout, sleep_s=sleep_s, insecure=insecure, retries=2
+                    url, timeout=timeout, sleep_s=sleep_s, insecure=insecure, retries=1
                 )
                 html = decode_html(data)
                 if len(html) < 1500:
@@ -83,6 +85,7 @@ def probe_notice_kind(
                 if procurement_id not in html and "regNumber" not in html:
                     errors.append(f"{kind}/{key}: no regNumber marker")
                     continue
+                print(f"probe notice {procurement_id}: ok {kind}/{key}", file=sys.stderr)
                 return kind, html, final
             except Exception as exc:  # noqa: BLE001
                 errors.append(f"{kind}/{key}: {exc}")
@@ -98,7 +101,7 @@ def fetch_notice(
     out_root: Path,
     *,
     sleep_s: float = 1.5,
-    timeout: float = 90.0,
+    timeout: float = 15.0,
     skip_download: bool = False,
     insecure: bool = False,
     kind: str | None = None,

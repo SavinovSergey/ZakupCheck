@@ -146,7 +146,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     p.add_argument("--skip-download", action="store_true", help="Только HTML, без вложений")
     p.add_argument("--sleep", type=float, default=1.5)
-    p.add_argument("--timeout", type=float, default=90.0)
+    p.add_argument("--timeout", type=float, default=15.0)
     p.add_argument("--insecure", action="store_true")
     p.add_argument(
         "--report-dir",

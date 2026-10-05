@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import json
 import zipfile
 from pathlib import Path
 from xml.etree.ElementTree import Element, SubElement, tostring
 
 from ingest.fas.download import (
+    classify_long_ids,
+    discover_procurement_ids_from_complaint_dir,
     fetch_from_html_file,
     main,
     parse_document_links,
@@ -33,6 +36,79 @@ def test_parse_card_links_and_procurement() -> None:
     titles = {l.title for l in links}
     assert "Решение.pdf" in titles
     assert "Жалоба.docx" in titles
+
+
+def test_classify_long_ids_notice_vs_contract() -> None:
+    notice, contract, unknown = classify_long_ids(
+        "аукцион (номер извещения в ЕИС – 0108300016326000003); "
+        "заключен государственный контракт с реестровым номером 2132619645626000006; "
+        "и ещё голый номер 0373100062626000058 без подписи."
+    )
+    assert "0108300016326000003" in notice
+    assert "2132619645626000006" in contract
+    assert "0373100062626000058" in unknown
+    assert "2132619645626000006" not in notice
+
+
+def test_discover_skips_contract_ids_from_decision_text(tmp_path: Path) -> None:
+    """Fallback без карточки: берём контекст извещения, не контракт."""
+    complaint = "202600109157000671"
+    out = tmp_path / complaint
+    (out / "text").mkdir(parents=True)
+    (out / "files").mkdir()
+    (out / "raw").mkdir()
+    (out / "meta.json").write_text(
+        '{"complaint_number": "%s", "procurement_ids": []}\n' % complaint,
+        encoding="utf-8",
+    )
+    (out / "text" / "решение.txt").write_text(
+        "По результатам закупки заключен государственный контракт "
+        "с реестровым номером 2132619645626000006.\n"
+        "Предмет: запрос котировок (номер извещения – 0809500000326003521).\n",
+        encoding="utf-8",
+    )
+    found = discover_procurement_ids_from_complaint_dir(out, complaint_number=complaint)
+    assert found == ["0809500000326003521"]
+    assert "2132619645626000006" not in found
+
+
+def test_discover_prefers_card_label_over_text_examples(tmp_path: Path) -> None:
+    complaint = "202600100161015558"
+    out = tmp_path / complaint
+    (out / "text").mkdir(parents=True)
+    (out / "files").mkdir()
+    (out / "raw").mkdir()
+    (out / "meta.json").write_text(
+        json.dumps(
+            {
+                "complaint_number": complaint,
+                # загрязнение прошлым прогоном
+                "procurement_ids": [
+                    "0373200022226001924",
+                    "0121200004724000809",
+                    "0372100043023000208",
+                ],
+            },
+            ensure_ascii=False,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    (out / "text" / "card_information.txt").write_text(
+        "Сведения о закупке\nНомер извещения\n0373200022226001924\nНаименование закупки\nУЗИ\n",
+        encoding="utf-8",
+    )
+    (out / "text" / "жалоба.txt").write_text(
+        "при закупках УЗИ-сканеров:\n"
+        "https://zakupki.gov.ru/epz/order/notice/ea20/view/common-info.html"
+        "?regNumber=0121200004724000809\n"
+        "и ещё [0372100043023000208](https://zakupki.gov.ru/epz/order/notice/"
+        "ea20/view/common-info.html?regNumber=0372100043023000208)\n",
+        encoding="utf-8",
+    )
+    (out / "files" / "2328928518.194217733930353958.1.docx").write_bytes(b"PK")
+    found = discover_procurement_ids_from_complaint_dir(out, complaint_number=complaint)
+    assert found == ["0373200022226001924"]
 
 
 def test_extract_html_keeps_argument() -> None:
@@ -169,8 +245,6 @@ def test_fetch_from_html_offline(tmp_path: Path) -> None:
     assert "0123456789012345678" in meta
     assert "202500100161017401" not in meta.split("procurement_ids")[1][:80] or True
     # номер жалобы исключён из procurement_ids
-    import json
-
     pids = json.loads(meta)["procurement_ids"]
     assert "202500100161017401" not in pids
     assert "0123456789012345678" in pids

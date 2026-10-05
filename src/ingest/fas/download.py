@@ -46,6 +46,27 @@ ORDER_NOTICE_RE = re.compile(
     r"/epz/order/notice/[^\"'\s>]+[?&]regNumber=(\d{18,19})",
     re.I,
 )
+LONG_ID_RE = re.compile(r"\b(\d{18,19})\b")
+# поле «Номер извещения» в карточке жалобы ЕИС (основной источник)
+NOTICE_LABEL_RE = re.compile(
+    r"Номер\s+извещения\s*[№N#:]?\s*(\d{18,19})",
+    re.I,
+)
+# контекст в произвольном тексте: извещение / закупка vs реестр контракта
+NOTICE_CTX_RE = re.compile(
+    r"(?:номер\w*\s+извещен|извещен\w*\s*[№N#]|извещен\w*\s+об\s|"
+    r"номер\w*\s+закупк|закупк\w*\s*[№N#]|аукцион\w*\s*[№N#]|"
+    r"regNumber|reestrNumber|purchaseNumber|/epz/order/notice/)",
+    re.I,
+)
+CONTRACT_CTX_RE = re.compile(
+    r"(?:реестров\w*\s+номер\w*\s+контракт|"
+    r"контракт\w*\s+с\s+реестров\w*\s+номер|"
+    r"государственн\w*\s+контракт\w*[^.…]{0,40}реестров|"
+    r"номер\w*\s+контракт\w*\s+в\s+реестр|"
+    r"реестр\w*\s+контракт)",
+    re.I,
+)
 # частые ссылки на скачивание вложений ЕИС
 DOWNLOAD_HREF_RE = re.compile(
     r'href=["\']([^"\']*(?:downloadDocument|downloadHtml|file\.html|getDocs)[^"\']*)["\']',
@@ -78,7 +99,7 @@ class ComplaintMeta:
 def http_get(
     url: str,
     *,
-    timeout: float = 90.0,
+    timeout: float = 15.0,
     retries: int = 3,
     sleep_s: float = 1.0,
     insecure: bool = False,
@@ -146,6 +167,48 @@ def parse_procurement_ids(html: str, *, exclude: set[str] | None = None) -> list
     return normalize_procurement_ids(found, exclude=exclude)
 
 
+def _nearest_ctx_dist(window: str, id_offset: int, pattern: re.Pattern[str]) -> int | None:
+    """Минимальное расстояние от id до совпадения pattern внутри window; None если нет."""
+    best: int | None = None
+    for cm in pattern.finditer(window):
+        # расстояние от ближайшего края совпадения до позиции id
+        if cm.end() <= id_offset:
+            d = id_offset - cm.end()
+        elif cm.start() >= id_offset:
+            d = cm.start() - id_offset
+        else:
+            d = 0
+        if best is None or d < best:
+            best = d
+    return best
+
+
+def classify_long_ids(text: str) -> tuple[set[str], set[str], set[str]]:
+    """Разнести 18–19-значные id по ближайшему контексту: notice / contract / unknown."""
+    notice: set[str] = set()
+    contract: set[str] = set()
+    unknown: set[str] = set()
+    # узкое окно: дальше 60 символов контекст обычно уже про другое
+    radius = 60
+    for m in LONG_ID_RE.finditer(text):
+        num = m.group(1)
+        left = max(0, m.start() - radius)
+        window = text[left : m.end() + radius]
+        id_offset = m.start() - left
+        d_notice = _nearest_ctx_dist(window, id_offset, NOTICE_CTX_RE)
+        d_contract = _nearest_ctx_dist(window, id_offset, CONTRACT_CTX_RE)
+        if d_notice is None and d_contract is None:
+            unknown.add(num)
+        elif d_contract is None or (d_notice is not None and d_notice < d_contract):
+            notice.add(num)
+        elif d_notice is None or d_contract < d_notice:
+            contract.add(num)
+        else:
+            # одинаково близко — безопаснее считать контрактом (не тащить в probe)
+            contract.add(num)
+    return notice, contract, unknown
+
+
 def normalize_procurement_ids(
     ids: list[str],
     *,
@@ -166,31 +229,125 @@ def normalize_procurement_ids(
     return out
 
 
+def _is_card_text_name(name: str) -> bool:
+    low = name.lower()
+    return low.startswith("card_") or "сведен" in low or "complaint" in low
+
+
+def _is_card_html_path(path: Path) -> bool:
+    """HTML карточки жалобы (не произвольные вложения с чужими ссылками)."""
+    if path.parent.name == "raw" and path.suffix.lower() == ".html":
+        return True
+    low = path.name.lower()
+    return path.suffix.lower() == ".html" and (
+        "сведен" in low or "complaint" in low or low.startswith("card_")
+    )
+
+
+def parse_notice_labels(text: str) -> list[str]:
+    return NOTICE_LABEL_RE.findall(text)
+
+
 def discover_procurement_ids_from_complaint_dir(
     out_dir: Path,
     *,
     complaint_number: str,
 ) -> list[str]:
-    """Добрать номер извещения из meta / имён файлов / текста жалобы."""
-    found: list[str] = []
+    """Номер извещения для жалобы: сначала карточка ЕИС, иначе осторожный fallback.
+
+    На 50 скачанных жалобах поле «Номер извещения» / HTML карточки всегда даёт
+    нужный id; дополнительные номера из текста жалобы/решения — чужие примеры
+    (ложный массовый fetch). Имена файлов не используем.
+    """
+    exclude = {complaint_number}
+    card_ids: list[str] = []
+
+    for p in out_dir.glob("raw/*.html"):
+        if not _is_card_html_path(p):
+            continue
+        try:
+            html = p.read_text(encoding="utf-8")
+        except OSError:
+            continue
+        card_ids.extend(ORDER_NOTICE_RE.findall(html))
+        card_ids.extend(REG_NUMBER_RE.findall(html))
+        card_ids.extend(parse_notice_labels(html))
+
+    for p in out_dir.glob("files/*.html"):
+        if not _is_card_html_path(p):
+            continue
+        try:
+            html = p.read_text(encoding="utf-8")
+        except OSError:
+            continue
+        card_ids.extend(ORDER_NOTICE_RE.findall(html))
+        card_ids.extend(REG_NUMBER_RE.findall(html))
+        card_ids.extend(parse_notice_labels(html))
+
+    for p in out_dir.glob("text/*"):
+        if not p.is_file() or p.suffix.lower() != ".txt":
+            continue
+        if not _is_card_text_name(p.name):
+            continue
+        try:
+            text = p.read_text(encoding="utf-8")
+        except OSError:
+            continue
+        card_ids.extend(parse_notice_labels(text))
+
+    card_norm = normalize_procurement_ids(card_ids, exclude=exclude)
+    if card_norm:
+        return card_norm
+
+    # fallback: meta (уже связанные) + текст только с контекстом «извещение»
+    fallback: list[str] = []
+    contract_ids: set[str] = set()
     meta_path = out_dir / "meta.json"
     if meta_path.exists():
-        raw = json.loads(meta_path.read_text(encoding="utf-8"))
-        found.extend(raw.get("procurement_ids") or [])
-        found.extend(
+        try:
+            raw = json.loads(meta_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            raw = {}
+        # не доверяем раздутому procurement_ids из прошлых прогонов — только notice_dirs
+        fallback.extend(
             Path(p).name
             for p in (raw.get("notice_dirs") or [])
-            if Path(p).name
+            if Path(p).name and Path(p).name.isdigit()
         )
-    for pattern in ("files/*", "text/*"):
-        for p in out_dir.glob(pattern):
-            found.extend(re.findall(r"\b(\d{18,19})\b", p.name))
-            if p.suffix.lower() == ".txt":
-                try:
-                    found.extend(re.findall(r"\b(\d{18,19})\b", p.read_text(encoding="utf-8")[:8000]))
-                except OSError:
-                    pass
-    return normalize_procurement_ids(found, exclude={complaint_number})
+
+    for p in out_dir.glob("text/*"):
+        if not p.is_file() or p.suffix.lower() != ".txt":
+            continue
+        if p.name.startswith("_") or _is_card_text_name(p.name):
+            continue
+        try:
+            text = p.read_text(encoding="utf-8")
+        except OSError:
+            continue
+        n_ids, c_ids, _unk = classify_long_ids(text)
+        fallback.extend(n_ids)
+        contract_ids.update(c_ids)
+
+    out = [
+        x
+        for x in normalize_procurement_ids(fallback, exclude=exclude)
+        if x not in contract_ids
+    ]
+    if contract_ids:
+        dropped = sorted(contract_ids - set(out))
+        if dropped:
+            print(
+                f"skip contract-like ids (not notice): {', '.join(dropped[:5])}"
+                + ("…" if len(dropped) > 5 else ""),
+                file=sys.stderr,
+            )
+    if len(out) > 1:
+        print(
+            f"fallback notice ids ({len(out)}): using all candidates; "
+            f"prefer card «Номер извещения» when available",
+            file=sys.stderr,
+        )
+    return out
 
 
 def attach_notices(
@@ -199,7 +356,7 @@ def attach_notices(
     *,
     fetch_missing: bool = True,
     sleep_s: float = 1.5,
-    timeout: float = 90.0,
+    timeout: float = 15.0,
     insecure: bool = False,
 ) -> list[Path]:
     """Связать жалобу с извещениями: использовать уже скачанные или докачать.
@@ -615,7 +772,7 @@ def fetch_complaint(
     out_root: Path,
     *,
     sleep_s: float = 1.5,
-    timeout: float = 90.0,
+    timeout: float = 15.0,
     skip_download: bool = False,
     insecure: bool = False,
 ) -> Path:
@@ -912,7 +1069,7 @@ def cmd_extract(args: argparse.Namespace) -> int:
 def build_parser() -> argparse.ArgumentParser:
     common = argparse.ArgumentParser(add_help=False)
     common.add_argument("--sleep", type=float, default=1.5, help="Пауза между запросами, сек")
-    common.add_argument("--timeout", type=float, default=90.0)
+    common.add_argument("--timeout", type=float, default=15.0)
     common.add_argument(
         "--insecure",
         action="store_true",
