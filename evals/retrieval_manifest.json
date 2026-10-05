@@ -1,0 +1,795 @@
+{
+  "counts": {
+    "all": 80,
+    "dev": 15,
+    "draft": 0,
+    "eval": 6,
+    "excluded": 59,
+    "verified": 21
+  },
+  "dev": [
+    {
+      "case_group_id": "fas_2026_contract_gruppam_disability_pref",
+      "case_id": "fas_2026_contract_gruppam_disability_pref",
+      "gold_norms": [
+        "44FZ:2026-08-04:art.51:ch.2:p.1"
+      ],
+      "topic": "contract_conclusion"
+    },
+    {
+      "case_group_id": "fas_2026_notice_itspb_power_mismatch_007442",
+      "case_id": "fas_2026_notice_itspb_power_mismatch_007442",
+      "gold_norms": [
+        "44FZ:2026-08-04:art.42:ch.1:p.5"
+      ],
+      "topic": "notice_content"
+    },
+    {
+      "case_group_id": "fas_2026_notice_yambaev_gisp_011908",
+      "case_id": "fas_2026_notice_yambaev_gisp_011908",
+      "gold_norms": [
+        "44FZ:2026-08-04:art.93:ch.12:p.6"
+      ],
+      "topic": "single_supplier_procedure"
+    },
+    {
+      "case_group_id": "fas_2026_ooz_alfamed_sterrad_asp_001545",
+      "case_id": "fas_2026_ooz_alfamed_sterrad_asp_001545",
+      "gold_norms": [
+        "44FZ:2026-08-04:art.33:ch.1:p.1"
+      ],
+      "topic": "object_description"
+    },
+    {
+      "case_group_id": "fas_2026_ooz_garantm_sc120_specs_010872",
+      "case_id": "fas_2026_ooz_garantm_sc120_specs_010872",
+      "gold_norms": [
+        "44FZ:2026-08-04:art.42:ch.2:p.1"
+      ],
+      "topic": "object_description"
+    },
+    {
+      "case_group_id": "fas_2026_ooz_itb_security_lot_000777",
+      "case_id": "fas_2026_ooz_itb_security_lot_000777",
+      "gold_norms": [
+        "44FZ:2026-08-04:art.8"
+      ],
+      "topic": "competition"
+    },
+    {
+      "case_group_id": "fas_2026_ooz_myachin_yoltash_000476",
+      "case_id": "fas_2026_ooz_myachin_yoltash_000476",
+      "gold_norms": [
+        "44FZ:2026-08-04:art.33:ch.1:p.1"
+      ],
+      "topic": "object_description"
+    },
+    {
+      "case_group_id": "fas_2026_ooz_pavlov_beaverlab_012033",
+      "case_id": "fas_2026_ooz_pavlov_beaverlab_012033",
+      "gold_norms": [
+        "44FZ:2026-08-04:art.42:ch.2:p.1"
+      ],
+      "topic": "object_description"
+    },
+    {
+      "case_group_id": "fas_2026_ooz_stroimost_sterilization_015861",
+      "case_id": "fas_2026_ooz_stroimost_sterilization_015861",
+      "gold_norms": [
+        "44FZ:2026-08-04:art.33:ch.1:p.1"
+      ],
+      "topic": "object_description"
+    },
+    {
+      "case_group_id": "fas_2026_part_demin_missing_ru_000806",
+      "case_id": "fas_2026_part_demin_missing_ru_000806",
+      "gold_norms": [
+        "44FZ:2026-08-04:art.93:ch.12"
+      ],
+      "topic": "application_review"
+    },
+    {
+      "case_group_id": "fas_2026_part_integra_ups_012009",
+      "case_id": "fas_2026_part_integra_ups_012009",
+      "gold_norms": [
+        "44FZ:2026-08-04:art.50:ch.3"
+      ],
+      "topic": "application_review"
+    },
+    {
+      "case_group_id": "fas_2026_part_maxstroy_sro_docs_000479",
+      "case_id": "fas_2026_part_maxstroy_sro_docs_000479",
+      "gold_norms": [
+        "44FZ:2026-08-04:art.49:ch.5:p.1"
+      ],
+      "topic": "application_review"
+    },
+    {
+      "case_group_id": "fas_2026_part_medfarm_gauze_density_007105",
+      "case_id": "fas_2026_part_medfarm_gauze_density_007105",
+      "gold_norms": [
+        "44FZ:2026-08-04:art.49:ch.5:p.1"
+      ],
+      "topic": "application_review"
+    },
+    {
+      "case_group_id": "fas_2026_part_melnichkin_sro_000962",
+      "case_id": "fas_2026_part_melnichkin_sro_000962",
+      "gold_norms": [
+        "44FZ:2026-08-04:art.31:ch.1:p.1",
+        "44FZ:2026-08-04:art.31:ch.5",
+        "44FZ:2026-08-04:art.42:ch.1:p.12"
+      ],
+      "topic": "participant_requirements"
+    },
+    {
+      "case_group_id": "fas_2026_part_valiullin_rnp_breeze_017785",
+      "case_id": "fas_2026_part_valiullin_rnp_breeze_017785",
+      "gold_norms": [
+        "44FZ:2026-08-04:art.49:ch.5:p.1"
+      ],
+      "topic": "application_review"
+    }
+  ],
+  "edition_id": "2026-08-04",
+  "eval": [
+    {
+      "case_group_id": "fas_2026_notice_labiko_orange_color_007320",
+      "case_id": "fas_2026_notice_labiko_orange_color_007320",
+      "gold_norms": [
+        "44FZ:2026-08-04:art.42:ch.1:p.5"
+      ],
+      "topic": "notice_content"
+    },
+    {
+      "case_group_id": "fas_2026_ooz_amkodor_loader_000804",
+      "case_id": "fas_2026_ooz_amkodor_loader_000804",
+      "gold_norms": [
+        "44FZ:2026-08-04:art.42:ch.2:p.1"
+      ],
+      "topic": "object_description"
+    },
+    {
+      "case_group_id": "fas_2026_ooz_medizdeliya_mirror_specs",
+      "case_id": "fas_2026_ooz_medizdeliya_mirror_specs",
+      "gold_norms": [
+        "44FZ:2026-08-04:art.42:ch.2:p.1",
+        "44FZ:2026-08-04:art.33:ch.1:p.1",
+        "44FZ:2026-08-04:art.8:ch.2"
+      ],
+      "topic": "object_description"
+    },
+    {
+      "case_group_id": "fas_2026_ooz_vog_trademark",
+      "case_id": "fas_2026_ooz_vog_trademark",
+      "gold_norms": [
+        "44FZ:2026-08-04:art.33:ch.1:p.1"
+      ],
+      "topic": "object_description"
+    },
+    {
+      "case_group_id": "fas_2026_part_kononova_nkmi_011680",
+      "case_id": "fas_2026_part_kononova_nkmi_011680",
+      "gold_norms": [
+        "44FZ:2026-08-04:art.50:ch.3"
+      ],
+      "topic": "application_review"
+    },
+    {
+      "case_group_id": "fas_2026_part_mek_dynamic_scan_000762",
+      "case_id": "fas_2026_part_mek_dynamic_scan_000762",
+      "gold_norms": [
+        "44FZ:2026-08-04:art.48:ch.12:p.8",
+        "44FZ:2026-08-04:art.49:ch.5:p.1"
+      ],
+      "topic": "application_review"
+    }
+  ],
+  "law_content_sha256": "271d16af182c5f2b02966ed56c78a69fc5e420461a198191b4d38210b0d4c2d2",
+  "manifest_version": 1,
+  "non_benchmark": [
+    {
+      "annotation_status": "excluded",
+      "case_group_id": "fas_2026_contract_kharkov_evasion_001075",
+      "case_id": "fas_2026_contract_kharkov_evasion_001075",
+      "duplicate_of": null,
+      "exclusion_reasons": [
+        "missing_full_decision",
+        "missing_gold_norms",
+        "rejected_argument"
+      ]
+    },
+    {
+      "annotation_status": "excluded",
+      "case_group_id": "fas_2026_contract_pisareva_bag_volume_000483",
+      "case_id": "fas_2026_contract_pisareva_bag_volume_000483",
+      "duplicate_of": null,
+      "exclusion_reasons": [
+        "missing_full_decision"
+      ]
+    },
+    {
+      "annotation_status": "excluded",
+      "case_group_id": "fas_2026_contract_smeu_thermoplast_deadline_002044",
+      "case_id": "fas_2026_contract_smeu_thermoplast_deadline_002044",
+      "duplicate_of": null,
+      "exclusion_reasons": [
+        "missing_gold_norms",
+        "rejected_argument"
+      ]
+    },
+    {
+      "annotation_status": "excluded",
+      "case_group_id": "fas_2026_contract_vektor_certificate_term_005416",
+      "case_id": "fas_2026_contract_vektor_certificate_term_005416",
+      "duplicate_of": null,
+      "exclusion_reasons": [
+        "missing_full_decision",
+        "missing_gold_norms",
+        "rejected_argument"
+      ]
+    },
+    {
+      "annotation_status": "excluded",
+      "case_group_id": "fas_2026_notice_artrays_natregime_cancelled_000939",
+      "case_id": "fas_2026_notice_artrays_natregime_cancelled_000939",
+      "duplicate_of": null,
+      "exclusion_reasons": [
+        "missing_full_decision",
+        "missing_gold_norms",
+        "rejected_argument"
+      ]
+    },
+    {
+      "annotation_status": "excluded",
+      "case_group_id": "fas_2026_notice_belina_rrpp_declaration_rejected",
+      "case_id": "fas_2026_notice_belina_rrpp_declaration_rejected",
+      "duplicate_of": null,
+      "exclusion_reasons": [
+        "missing_full_decision",
+        "missing_gold_norms",
+        "rejected_argument",
+        "relies_on_bylaw"
+      ]
+    },
+    {
+      "annotation_status": "excluded",
+      "case_group_id": "fas_2026_notice_kamm_art93_protocol_deadline",
+      "case_id": "fas_2026_notice_kamm_art93_protocol_deadline",
+      "duplicate_of": null,
+      "exclusion_reasons": [
+        "missing_full_decision"
+      ]
+    },
+    {
+      "annotation_status": "excluded",
+      "case_group_id": "fas_2026_notice_kravchenko_uz_registry_015558",
+      "case_id": "fas_2026_notice_kravchenko_uz_registry_015558",
+      "duplicate_of": null,
+      "exclusion_reasons": [
+        "missing_gold_norms",
+        "rejected_argument",
+        "relies_on_bylaw"
+      ]
+    },
+    {
+      "annotation_status": "excluded",
+      "case_group_id": "fas_2026_notice_nesterenko_cameras_011910",
+      "case_id": "fas_2026_notice_nesterenko_cameras_011910",
+      "duplicate_of": null,
+      "exclusion_reasons": [
+        "relies_on_bylaw"
+      ]
+    },
+    {
+      "annotation_status": "excluded",
+      "case_group_id": "fas_2026_notice_specstroymontazh_clarification_001106",
+      "case_id": "fas_2026_notice_specstroymontazh_clarification_001106",
+      "duplicate_of": null,
+      "exclusion_reasons": [
+        "edition_not_applicable"
+      ]
+    },
+    {
+      "annotation_status": "excluded",
+      "case_group_id": "fas_2026_notice_tochny_signal_pp1875_007082",
+      "case_id": "fas_2026_notice_tochny_signal_pp1875_007082",
+      "duplicate_of": null,
+      "exclusion_reasons": [
+        "relies_on_bylaw"
+      ]
+    },
+    {
+      "annotation_status": "excluded",
+      "case_group_id": "fas_2026_ooz_almed_strip_specs_008186",
+      "case_id": "fas_2026_ooz_almed_strip_specs_008186",
+      "duplicate_of": null,
+      "exclusion_reasons": [
+        "edition_not_applicable"
+      ]
+    },
+    {
+      "annotation_status": "excluded",
+      "case_group_id": "fas_2026_ooz_arabis_bus_age_000923",
+      "case_id": "fas_2026_ooz_arabis_bus_age_000923",
+      "duplicate_of": null,
+      "exclusion_reasons": [
+        "missing_full_decision",
+        "missing_gold_norms",
+        "rejected_argument"
+      ]
+    },
+    {
+      "annotation_status": "excluded",
+      "case_group_id": "fas_2026_ooz_belina_guidewire_nylon_001744",
+      "case_id": "fas_2026_ooz_belina_guidewire_nylon_001744",
+      "duplicate_of": null,
+      "exclusion_reasons": [
+        "missing_full_decision"
+      ]
+    },
+    {
+      "annotation_status": "excluded",
+      "case_group_id": "fas_2026_ooz_bondarenko_tips_natregime_017832",
+      "case_id": "fas_2026_ooz_bondarenko_tips_natregime_017832",
+      "duplicate_of": null,
+      "exclusion_reasons": [
+        "relies_on_bylaw"
+      ]
+    },
+    {
+      "annotation_status": "excluded",
+      "case_group_id": "fas_2026_ooz_durnitsyn_mixed_lot_002659",
+      "case_id": "fas_2026_ooz_durnitsyn_mixed_lot_002659",
+      "duplicate_of": null,
+      "exclusion_reasons": [
+        "missing_gold_norms",
+        "rejected_argument",
+        "relies_on_bylaw"
+      ]
+    },
+    {
+      "annotation_status": "excluded",
+      "case_group_id": "fas_2026_ooz_eikos_enteral_ktru_017658",
+      "case_id": "fas_2026_ooz_eikos_enteral_ktru_017658",
+      "duplicate_of": null,
+      "exclusion_reasons": [
+        "relies_on_bylaw"
+      ]
+    },
+    {
+      "annotation_status": "excluded",
+      "case_group_id": "fas_2026_ooz_garantm_glove_texture_001787",
+      "case_id": "fas_2026_ooz_garantm_glove_texture_001787",
+      "duplicate_of": null,
+      "exclusion_reasons": [
+        "missing_gold_norms",
+        "rejected_argument"
+      ]
+    },
+    {
+      "annotation_status": "excluded",
+      "case_group_id": "fas_2026_ooz_garantm_gloves_specs_003400",
+      "case_id": "fas_2026_ooz_garantm_gloves_specs_003400",
+      "duplicate_of": null,
+      "exclusion_reasons": [
+        "missing_full_decision",
+        "missing_gold_norms",
+        "rejected_argument",
+        "relies_on_bylaw"
+      ]
+    },
+    {
+      "annotation_status": "excluded",
+      "case_group_id": "fas_2026_ooz_globalhimi_disinfectant_005414",
+      "case_id": "fas_2026_ooz_globalhimi_disinfectant_005414",
+      "duplicate_of": null,
+      "exclusion_reasons": [
+        "missing_full_decision"
+      ]
+    },
+    {
+      "annotation_status": "excluded",
+      "case_group_id": "fas_2026_ooz_goronok_bows_011939",
+      "case_id": "fas_2026_ooz_goronok_bows_011939",
+      "duplicate_of": null,
+      "exclusion_reasons": [
+        "missing_full_decision",
+        "missing_gold_norms",
+        "rejected_argument"
+      ]
+    },
+    {
+      "annotation_status": "excluded",
+      "case_group_id": "fas_2026_ooz_khalilov_cadastral_area_001845",
+      "case_id": "fas_2026_ooz_khalilov_cadastral_area_001845",
+      "duplicate_of": null,
+      "exclusion_reasons": [
+        "missing_full_decision",
+        "missing_gold_norms",
+        "rejected_argument"
+      ]
+    },
+    {
+      "annotation_status": "excluded",
+      "case_group_id": "fas_2026_ooz_kravchenko_ktru_glucose_015568",
+      "case_id": "fas_2026_ooz_kravchenko_ktru_glucose_015568",
+      "duplicate_of": null,
+      "exclusion_reasons": [
+        "missing_gold_norms",
+        "rejected_argument",
+        "relies_on_bylaw"
+      ]
+    },
+    {
+      "annotation_status": "excluded",
+      "case_group_id": "fas_2026_ooz_kravchenko_ktru_shredder_015470",
+      "case_id": "fas_2026_ooz_kravchenko_ktru_shredder_015470",
+      "duplicate_of": null,
+      "exclusion_reasons": [
+        "missing_gold_norms",
+        "rejected_argument",
+        "relies_on_bylaw"
+      ]
+    },
+    {
+      "annotation_status": "excluded",
+      "case_group_id": "fas_2026_ooz_kvazar_katusha_000635",
+      "case_id": "fas_2026_ooz_kvazar_katusha_000635",
+      "duplicate_of": null,
+      "exclusion_reasons": [
+        "missing_gold_norms",
+        "rejected_argument"
+      ]
+    },
+    {
+      "annotation_status": "excluded",
+      "case_group_id": "fas_2026_ooz_meridian_grena_clip_001793",
+      "case_id": "fas_2026_ooz_meridian_grena_clip_001793",
+      "duplicate_of": null,
+      "exclusion_reasons": [
+        "edition_not_applicable",
+        "missing_gold_norms",
+        "procedural_violation_only"
+      ]
+    },
+    {
+      "annotation_status": "excluded",
+      "case_group_id": "fas_2026_ooz_psp_energy_survey_011469",
+      "case_id": "fas_2026_ooz_psp_energy_survey_011469",
+      "duplicate_of": null,
+      "exclusion_reasons": [
+        "relies_on_bylaw"
+      ]
+    },
+    {
+      "annotation_status": "excluded",
+      "case_group_id": "fas_2026_ooz_rostgrupp_pautina_incomplete",
+      "case_id": "fas_2026_ooz_rostgrupp_pautina_incomplete",
+      "duplicate_of": null,
+      "exclusion_reasons": [
+        "missing_full_decision"
+      ]
+    },
+    {
+      "annotation_status": "excluded",
+      "case_group_id": "fas_2026_ooz_spironika_hydroxide_017695",
+      "case_id": "fas_2026_ooz_spironika_hydroxide_017695",
+      "duplicate_of": null,
+      "exclusion_reasons": [
+        "missing_gold_norms",
+        "rejected_argument",
+        "relies_on_bylaw"
+      ]
+    },
+    {
+      "annotation_status": "excluded",
+      "case_group_id": "fas_2026_ooz_spivmir_medexam_011962",
+      "case_id": "fas_2026_ooz_spivmir_medexam_011962",
+      "duplicate_of": null,
+      "exclusion_reasons": [
+        "relies_on_bylaw"
+      ]
+    },
+    {
+      "annotation_status": "excluded",
+      "case_group_id": "fas_2026_ooz_spivmir_medexam_011962",
+      "case_id": "fas_2026_ooz_spivmir_medexam_011964",
+      "duplicate_of": "fas_2026_ooz_spivmir_medexam_011962",
+      "exclusion_reasons": [
+        "duplicate_case",
+        "relies_on_bylaw"
+      ]
+    },
+    {
+      "annotation_status": "excluded",
+      "case_group_id": "fas_2026_ooz_spivmir_medexam_011962",
+      "case_id": "fas_2026_ooz_spivmir_medexam_011966",
+      "duplicate_of": "fas_2026_ooz_spivmir_medexam_011962",
+      "exclusion_reasons": [
+        "duplicate_case",
+        "relies_on_bylaw"
+      ]
+    },
+    {
+      "annotation_status": "excluded",
+      "case_group_id": "fas_2026_ooz_spivmir_medexam_011962",
+      "case_id": "fas_2026_ooz_spivmir_medexam_011968",
+      "duplicate_of": "fas_2026_ooz_spivmir_medexam_011962",
+      "exclusion_reasons": [
+        "duplicate_case",
+        "relies_on_bylaw"
+      ]
+    },
+    {
+      "annotation_status": "excluded",
+      "case_group_id": "fas_2026_ooz_spivmir_medexam_011962",
+      "case_id": "fas_2026_ooz_spivmir_medexam_011970",
+      "duplicate_of": "fas_2026_ooz_spivmir_medexam_011962",
+      "exclusion_reasons": [
+        "duplicate_case",
+        "relies_on_bylaw"
+      ]
+    },
+    {
+      "annotation_status": "excluded",
+      "case_group_id": "fas_2026_ooz_stagebox_011941",
+      "case_id": "fas_2026_ooz_stagebox_011941",
+      "duplicate_of": null,
+      "exclusion_reasons": [
+        "missing_full_decision",
+        "missing_gold_norms",
+        "rejected_argument"
+      ]
+    },
+    {
+      "annotation_status": "excluded",
+      "case_group_id": "fas_2026_ooz_zadostoinuyuzhizn_specs_rejected",
+      "case_id": "fas_2026_ooz_zadostoinuyuzhizn_specs_rejected",
+      "duplicate_of": null,
+      "exclusion_reasons": [
+        "missing_gold_norms",
+        "rejected_argument"
+      ]
+    },
+    {
+      "annotation_status": "excluded",
+      "case_group_id": "fas_2026_operator_rts_rejected",
+      "case_id": "fas_2026_operator_rts_rejected",
+      "duplicate_of": null,
+      "exclusion_reasons": [
+        "missing_full_decision",
+        "missing_gold_norms",
+        "rejected_argument"
+      ]
+    },
+    {
+      "annotation_status": "excluded",
+      "case_group_id": "fas_2026_part_argo_guarantee_phone_015663",
+      "case_id": "fas_2026_part_argo_guarantee_phone_015663",
+      "duplicate_of": null,
+      "exclusion_reasons": [
+        "missing_full_decision",
+        "relies_on_bylaw"
+      ]
+    },
+    {
+      "annotation_status": "excluded",
+      "case_group_id": "fas_2026_part_chebanenko_apartment_001335",
+      "case_id": "fas_2026_part_chebanenko_apartment_001335",
+      "duplicate_of": null,
+      "exclusion_reasons": [
+        "missing_full_decision"
+      ]
+    },
+    {
+      "annotation_status": "excluded",
+      "case_group_id": "fas_2026_part_demin_missing_ru_000806",
+      "case_id": "fas_2026_part_demin_missing_ru_000808",
+      "duplicate_of": "fas_2026_part_demin_missing_ru_000806",
+      "exclusion_reasons": [
+        "duplicate_case"
+      ]
+    },
+    {
+      "annotation_status": "excluded",
+      "case_group_id": "fas_2026_part_kolesnikov_pp1875_pref_017713",
+      "case_id": "fas_2026_part_kolesnikov_pp1875_pref_017713",
+      "duplicate_of": null,
+      "exclusion_reasons": [
+        "relies_on_bylaw"
+      ]
+    },
+    {
+      "annotation_status": "excluded",
+      "case_group_id": "fas_2026_part_melnichkin_pp2571_pos18_002252",
+      "case_id": "fas_2026_part_melnichkin_pp2571_pos18_002252",
+      "duplicate_of": null,
+      "exclusion_reasons": [
+        "relies_on_bylaw"
+      ]
+    },
+    {
+      "annotation_status": "excluded",
+      "case_group_id": "fas_2026_part_melnichkin_pp2571_pos36_000840",
+      "case_id": "fas_2026_part_melnichkin_pp2571_pos36_000840",
+      "duplicate_of": null,
+      "exclusion_reasons": [
+        "missing_full_decision",
+        "relies_on_bylaw"
+      ]
+    },
+    {
+      "annotation_status": "excluded",
+      "case_group_id": "fas_2026_part_melnichkin_pp2571_pos18_002252",
+      "case_id": "fas_2026_part_melnichkin_pp2571_pos9_003398",
+      "duplicate_of": "fas_2026_part_melnichkin_pp2571_pos18_002252",
+      "exclusion_reasons": [
+        "duplicate_case",
+        "missing_full_decision",
+        "relies_on_bylaw"
+      ]
+    },
+    {
+      "annotation_status": "excluded",
+      "case_group_id": "fas_2026_part_melnichkin_rooms_000820",
+      "case_id": "fas_2026_part_melnichkin_rooms_000820",
+      "duplicate_of": null,
+      "exclusion_reasons": [
+        "missing_full_decision",
+        "relies_on_bylaw"
+      ]
+    },
+    {
+      "annotation_status": "excluded",
+      "case_group_id": "fas_2026_part_melnichkin_sidewalk_000949",
+      "case_id": "fas_2026_part_melnichkin_sidewalk_000949",
+      "duplicate_of": null,
+      "exclusion_reasons": [
+        "relies_on_bylaw"
+      ]
+    },
+    {
+      "annotation_status": "excluded",
+      "case_group_id": "fas_2026_part_melnichkin_sro_control_001315",
+      "case_id": "fas_2026_part_melnichkin_sro_control_001315",
+      "duplicate_of": null,
+      "exclusion_reasons": [
+        "missing_gold_norms",
+        "rejected_argument"
+      ]
+    },
+    {
+      "annotation_status": "excluded",
+      "case_group_id": "fas_2026_part_np_nellia_rrpp_000387",
+      "case_id": "fas_2026_part_np_nellia_rrpp_000387",
+      "duplicate_of": null,
+      "exclusion_reasons": [
+        "missing_gold_norms",
+        "rejected_argument",
+        "relies_on_bylaw"
+      ]
+    },
+    {
+      "annotation_status": "excluded",
+      "case_group_id": "fas_2026_part_obryvko_false_rooms_002944",
+      "case_id": "fas_2026_part_obryvko_false_rooms_002944",
+      "duplicate_of": null,
+      "exclusion_reasons": [
+        "missing_gold_norms",
+        "rejected_argument"
+      ]
+    },
+    {
+      "annotation_status": "excluded",
+      "case_group_id": "fas_2026_part_planeta_foreign_origin_001879",
+      "case_id": "fas_2026_part_planeta_foreign_origin_001879",
+      "duplicate_of": null,
+      "exclusion_reasons": [
+        "missing_gold_norms",
+        "rejected_argument",
+        "relies_on_bylaw"
+      ]
+    },
+    {
+      "annotation_status": "excluded",
+      "case_group_id": "fas_2026_part_shunko_dialyzer_instruction_001813",
+      "case_id": "fas_2026_part_shunko_dialyzer_instruction_001813",
+      "duplicate_of": null,
+      "exclusion_reasons": [
+        "missing_full_decision",
+        "missing_gold_norms",
+        "rejected_argument"
+      ]
+    },
+    {
+      "annotation_status": "excluded",
+      "case_group_id": "fas_2026_part_stroybyt_specialists_score_001113",
+      "case_id": "fas_2026_part_stroybyt_specialists_score_001113",
+      "duplicate_of": null,
+      "exclusion_reasons": [
+        "missing_gold_norms",
+        "rejected_argument",
+        "relies_on_bylaw"
+      ]
+    },
+    {
+      "annotation_status": "excluded",
+      "case_group_id": "fas_2026_part_syrodel_pp2571_experience_001833",
+      "case_id": "fas_2026_part_syrodel_pp2571_experience_001833",
+      "duplicate_of": null,
+      "exclusion_reasons": [
+        "missing_full_decision",
+        "relies_on_bylaw"
+      ]
+    },
+    {
+      "annotation_status": "excluded",
+      "case_group_id": "fas_2026_part_vektorm_st1_rejection_000925",
+      "case_id": "fas_2026_part_vektorm_st1_rejection_000925",
+      "duplicate_of": null,
+      "exclusion_reasons": [
+        "missing_full_decision",
+        "relies_on_bylaw"
+      ]
+    },
+    {
+      "annotation_status": "excluded",
+      "case_group_id": "fas_2026_participants_bars_rrpp_rejection_rejected",
+      "case_id": "fas_2026_participants_bars_rrpp_rejection_rejected",
+      "duplicate_of": null,
+      "exclusion_reasons": [
+        "missing_gold_norms",
+        "rejected_argument",
+        "relies_on_bylaw"
+      ]
+    },
+    {
+      "annotation_status": "excluded",
+      "case_group_id": "fas_2026_participants_lana_missing_declaration_rejected",
+      "case_id": "fas_2026_participants_lana_missing_declaration_rejected",
+      "duplicate_of": null,
+      "exclusion_reasons": [
+        "missing_gold_norms",
+        "rejected_argument"
+      ]
+    },
+    {
+      "annotation_status": "excluded",
+      "case_group_id": "fas_2026_participants_lider_false_info_rejected",
+      "case_id": "fas_2026_participants_lider_false_info_rejected",
+      "duplicate_of": null,
+      "exclusion_reasons": [
+        "missing_full_decision",
+        "missing_gold_norms",
+        "rejected_argument"
+      ]
+    },
+    {
+      "annotation_status": "excluded",
+      "case_group_id": "fas_2026_part_melnichkin_pp2571_pos18_002252",
+      "case_id": "fas_2026_participants_melnichkin_pp2571_below_threshold",
+      "duplicate_of": "fas_2026_part_melnichkin_pp2571_pos18_002252",
+      "exclusion_reasons": [
+        "duplicate_case",
+        "relies_on_bylaw"
+      ]
+    },
+    {
+      "annotation_status": "excluded",
+      "case_group_id": "fas_2026_participants_shlykov_license_rejected",
+      "case_id": "fas_2026_participants_shlykov_license_rejected",
+      "duplicate_of": null,
+      "exclusion_reasons": [
+        "missing_full_decision",
+        "missing_gold_norms",
+        "rejected_argument"
+      ]
+    }
+  ],
+  "norm_units_sha256": "0f2311a00823d6ec3bbbfd14fae622f3ab486ea289c7d53f8f7f55b37d0c8d47",
+  "query_variants": [
+    "raw",
+    "blind"
+  ]
+}

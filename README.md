@@ -43,6 +43,10 @@ python scripts/download_law.py --list-redactions   # список rdk
 # pip install 'zakup-check[fas]'   # PDF (pypdf) + DOCX→Markdown (mammoth)
 # OCR-fallback для сканов: системные tesseract-ocr (+ tessdata-rus) и poppler-utils
 # .doc/.rtf: системный LibreOffice (soffice / libreoffice-writer)
+
+# Проверить retrieval-разметку; ключ записи пересобирает замороженный manifest
+python scripts/validate_eval_cases.py
+python scripts/validate_eval_cases.py --write-manifest
 ```
 
 Артефакты загрузки: `edition.json`, `full_text.txt`, `blocks.jsonl`, `raw/source.html`

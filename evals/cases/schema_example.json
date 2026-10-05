@@ -1,10 +1,13 @@
 {
   "case_id": "fas_2025_ooz_001_a",
   "edition_id": "2026-08-04",
-  "topic": "ooz_33",
+  "topic": "object_description",
   "split": "dev",
   "outcome": "upheld",
-  "complaint_argument": "В описании объекта закупки указан товарный знак без слов «или эквивалент».",
+  "complaint_argument_raw": null,
+  "complaint_argument_blind": null,
+  "complaint_argument_summary": "В описании объекта закупки указан товарный знак без слов «или эквивалент».",
+  "complaint_argument_source": null,
   "doc_fragment": "…поставка принтера HP LaserJet Pro M404dn…",
   "doc_locator": {
     "path": null,
@@ -16,7 +19,15 @@
   "gold_norms": [
     "44FZ:2026-08-04:art.33:ch.1:p.1"
   ],
+  "gold_evidence": [],
+  "outcome_evidence": null,
   "relies_on_bylaw": false,
+  "annotation_status": "draft",
+  "exclusion_reasons": [
+    "source_span_unverified"
+  ],
+  "case_group_id": "example_not_for_benchmark",
+  "duplicate_of": null,
   "procurement_id": null,
   "procurement_url": null,
   "notice_date": "2025-03-15",

@@ -289,16 +289,36 @@ case_id
 procurement_id / url
 notice_date              # дата извещения → редакция закона
 fas_decision_id / url
-topic                    # ooz_33 / participants_31 / notice_42 / contract_34
-complaint_argument       # текст довода жалобы (запрос режима D, см. §6.1)
+topic                    # семантическая тема, без номера статьи
+complaint_argument_raw   # дословный довод (основной retrieval-запрос D/raw)
+complaint_argument_blind # тот же довод без прямых номеров норм (D/blind)
+complaint_argument_summary # редакторский пересказ; не входит в основную метрику
+complaint_argument_source # путь, char-span и точная цитата
 doc_fragment             # фрагмент извещения / приложения, к которому относится довод (+ локатор)
 outcome                  # upheld / rejected  (довод обоснован / не обоснован)
 gold_norms[]             # norm_id в каноне §4.2; до уровня пункта; подпункты → id пункта
+gold_evidence[]          # для каждой gold_norm: цитата решения ФАС + char-span
+outcome_evidence         # цитата вывода ФАС по доводу + char-span
 relies_on_bylaw          # bool, см. §3.2
+annotation_status        # verified / draft / excluded
+exclusion_reasons[]      # проверяемые причины невключения в recall@k
+case_group_id            # группа для split без leakage
+duplicate_of             # case_id выбранного представителя дубля
 doc_paths[]              # локальные пути к извещению и приложениям
 gold_notes               # краткий paraphrase для человека; не для строгой метрики
 split                    # dev / eval  (подбор порогов vs финальный прогон)
 ```
+
+В recall@k входят только `verified`: обоснованный довод, полный текст решения, непустой
+gold из применимой редакции, без опоры преимущественно на подзаконный акт и без дублей.
+Списки dev/eval и невключённых кейсов фиксируются в `evals/retrieval_manifest.json` вместе с SHA-256 корпуса.
+Значения `topic`: `object_description`, `participant_requirements`, `notice_content`,
+`application_review`, `contract_terms`, `contract_conclusion`, `single_supplier_procedure`, `competition`,
+`national_regime`; разбивка по статьям строится из `gold_norms`.
+
+**Отложенный долг:** на этой итерации не переразмечаются 11 расходящихся `doc_fragment` /
+`doc_locator` и не нормализуются 71 фактическое значение `issue_type`. Это отдельный этап перед
+end-to-end оценкой генерации.
 
 ### 4.4. Риск данных (главный)
 
@@ -409,7 +429,8 @@ Eval retrieval на этапе 1 остаётся на режиме D (дово�
 | **A** | Фрагмент документа как есть | Нижняя граница в end-to-end eval |
 | **B** | Гипотеза нарушения, сформулированная LLM по фрагменту («указан товарный знак без „или эквивалент“») | Пайплайн, опционально; сравнение в end-to-end eval |
 | **C** | Кандидат от эвристики: шаблон `issue_type` + цитата фрагмента | Основной режим пайплайна |
-| **D** | Довод жалобы (`complaint_argument`) | Eval retriever (этап 1); в продукте — режим довода (§6.0) |
+| **D/raw** | Дословный довод (`complaint_argument_raw`) | Основной eval retriever (этап 1) |
+| **D/blind** | Тот же довод без прямых номеров статей, частей и пунктов (`complaint_argument_blind`) | Проверка retrieval без citation leakage |
 | **E** | Без retrieval: таблица `issue_type → нормы` | Обязательный baseline |
 
 Логика:
