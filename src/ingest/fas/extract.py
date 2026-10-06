@@ -414,6 +414,28 @@ def safe_unpack_zip(zip_path: Path, dest_dir: Path) -> list[Path]:
     return out
 
 
+def heavy_kind(path: Path) -> str | None:
+    """Чем файл тяжёлый: LibreOffice, OCR картинки или OCR скана.
+
+    Текстовый PDF, docx, html и zip сюда не входят — их можно разобрать сразу.
+    """
+    kind = sniff_format(path)
+    suffix = kind or path.suffix.lower().lstrip(".")
+    if suffix in {"doc", "rtf"}:
+        return "doc-lo"
+    if suffix in IMAGE_SUFFIXES:
+        return "image-ocr"
+    if suffix == "pdf":
+        try:
+            text, _method = extract_pdf(path, ocr_fallback=False)
+        except Exception:
+            # Битый PDF нельзя считать ошибкой скачивания: его разбирает OCR.
+            return "pdf-ocr"
+        if len(text) < _PDF_TEXT_MIN_CHARS:
+            return "pdf-ocr"
+    return None
+
+
 def extract_file(path: Path, *, ocr_fallback: bool = True) -> tuple[str, str]:
     """Возвращает (text, method). method = ext / pdf-ocr / archive:zip / unsupported."""
     # Сначала содержимое, потом расширение (ЕИС часто врёт в имени).

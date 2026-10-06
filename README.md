@@ -40,7 +40,7 @@ python scripts/download_law.py --list-redactions   # список rdk
 # python scripts/download_fas.py complaint --number … --with-notice --link-only
 # Пакетно (список номеров → жалобы + извещения + отчёт в evals/batch_reports/):
 # python scripts/batch_download_fas.py --numbers-file evals/numbers_fas.txt --with-notice --insecure
-# pip install 'zakup-check[fas]'   # PDF (pypdf) + DOCX→Markdown (mammoth)
+# pip install 'zakup-check[fas]'   # PDF/CFF (pypdf + fontTools) + DOCX→Markdown (mammoth)
 # OCR-fallback для сканов: системные tesseract-ocr (+ tessdata-rus) и poppler-utils
 # .doc/.rtf: системный LibreOffice (soffice / libreoffice-writer)
 

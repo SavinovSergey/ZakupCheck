@@ -11,6 +11,7 @@
 from __future__ import annotations
 
 import argparse
+import asyncio
 import hashlib
 import json
 import re
@@ -29,12 +30,18 @@ from ingest.fas.extract import (
     correct_suffix,
     extract_file,
     extract_html,
+    heavy_kind,
     normalize_text,
     safe_unpack_zip,
 )
 
 USER_AGENT = "ZakupCheck/0.1 (+local research; respectful crawl; FAS eval ingest)"
 EIS_BASE = "https://zakupki.gov.ru"
+# После успешного ответа — короткая пауза. Длинная пауза (sleep_s) — между жалобами и после 403.
+SUCCESS_PAUSE_S = 0.1
+MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024
+# После 403 не переключаемся на соседние URL: ждём и повторяем тот же запрос.
+FORBIDDEN_COOLDOWN_S = (20, 40)
 
 COMPLAINT_NUM_RE = re.compile(r"complaintNumber=(\d+)", re.I)
 COMPLAINT_ID_RE = re.compile(r"complaintId=(\d+)", re.I)
@@ -96,6 +103,36 @@ class ComplaintMeta:
     notes: list[str] = field(default_factory=list)
 
 
+class DownloadRejected(Exception):
+    """Вложение не сохраняем: .bin или больше лимита. Тело по возможности не читаем."""
+
+    def __init__(self, reason: str) -> None:
+        super().__init__(reason)
+        self.reason = reason
+
+
+def would_be_bin(url: str, title: str | None, content_type: str) -> bool:
+    """Имя, под которым файл лёг бы на диск, — *.bin."""
+    return Path(guess_filename(url, title, content_type, 1)).suffix.lower() == ".bin"
+
+
+def _read_limited(resp: object, max_bytes: int | None) -> bytes:
+    read = getattr(resp, "read")
+    if max_bytes is None:
+        return read()
+    chunks: list[bytes] = []
+    total = 0
+    while True:
+        block = read(64 * 1024)
+        if not block:
+            break
+        total += len(block)
+        if total > max_bytes:
+            raise DownloadRejected("too-large")
+        chunks.append(block)
+    return b"".join(chunks)
+
+
 def http_get(
     url: str,
     *,
@@ -103,8 +140,14 @@ def http_get(
     retries: int = 3,
     sleep_s: float = 1.0,
     insecure: bool = False,
+    max_bytes: int | None = None,
+    title: str | None = None,
+    reject_bin: bool = False,
 ) -> tuple[bytes, str, str]:
-    """Возвращает (body, content_type, final_url)."""
+    """Возвращает (body, content_type, final_url).
+
+    После успеха пауза SUCCESS_PAUSE_S. sleep_s — пауза повтора после HTTP 403.
+    """
     last_err: Exception | None = None
     headers = {
         "User-Agent": USER_AGENT,
@@ -118,15 +161,202 @@ def http_get(
         try:
             req = urllib.request.Request(url, headers=headers)
             with urllib.request.urlopen(req, timeout=timeout, context=ctx) as resp:
-                data = resp.read()
                 ctype = (resp.headers.get("Content-Type") or "").split(";")[0].strip()
                 final = resp.geturl()
-                return data, ctype, final
+                if reject_bin and would_be_bin(final or url, title, ctype):
+                    raise DownloadRejected("bin")
+                length = resp.headers.get("Content-Length")
+                if max_bytes is not None and length:
+                    try:
+                        if int(length) > max_bytes:
+                            raise DownloadRejected("too-large")
+                    except ValueError:
+                        pass
+                data = _read_limited(resp, max_bytes)
+            time.sleep(SUCCESS_PAUSE_S)
+            return data, ctype, final
+        except DownloadRejected:
+            raise
+        except urllib.error.HTTPError as exc:
+            last_err = exc
+            retriable = exc.code in {403, 408, 425, 429} or 500 <= exc.code < 600
+            if not retriable:
+                raise
+            if attempt >= retries:
+                break
+            pause = sleep_s if exc.code == 403 else min(2**attempt, 4)
+            time.sleep(pause)
         except (urllib.error.URLError, TimeoutError) as exc:
             last_err = exc
-            time.sleep(max(sleep_s, min(2**attempt, 10)))
+            if attempt >= retries:
+                break
+            time.sleep(min(2**attempt, 4))
     assert last_err is not None
     raise last_err
+
+
+async def download_url(url: str, **kwargs: object) -> tuple[bytes, str, str]:
+    """HTTP-запрос в потоке, чтобы цикл событий мог в это время вести OCR."""
+    return await asyncio.to_thread(http_get, url, **kwargs)
+
+
+async def extract_heavy(path: Path) -> tuple[str, str]:
+    """OCR или LibreOffice. Не занимает цикл, в котором идут скачивания."""
+    return await asyncio.to_thread(extract_file, path)
+
+
+def is_explicit_bin(url: str, title: str | None) -> bool:
+    """Ссылка или заголовок уже называются *.bin — запрос не делаем."""
+    path = urllib.parse.urlparse(url).path
+    if Path(path).name.lower().endswith(".bin"):
+        return True
+    if title and Path(title.strip()).suffix.lower() == ".bin":
+        return True
+    return False
+
+
+def _write_text(path: Path, text: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding="utf-8")
+
+
+def _commit_download(dest: Path, data: bytes) -> tuple[Path, str]:
+    """Запись файла, проверка типа и хеш — вне цикла событий."""
+    save_bytes(dest, data)
+    return correct_suffix(dest), sha256_bytes(data)
+
+
+async def _persist_heavy(out_dir: Path, path: Path, source: str, text_stem: str) -> dict:
+    """Записать текст тяжёлого файла. meta.json здесь не трогаем."""
+    try:
+        text, method = await extract_heavy(path)
+    except Exception as exc:  # noqa: BLE001
+        return {
+            "out_dir": str(out_dir),
+            "source": source,
+            "method": "error",
+            "error": str(exc),
+        }
+    text_dir = out_dir / "text"
+    out_path = text_dir / Path(text_stem).with_suffix(".txt")
+    await asyncio.to_thread(_write_text, out_path, text + "\n")
+    text_rel = out_path.relative_to(text_dir).as_posix()
+    return {
+        "out_dir": str(out_dir),
+        "source": source,
+        "text_path": f"text/{text_rel}",
+        "method": method,
+        "chars": len(text),
+    }
+
+
+def _rebuild_combined(out_dir: Path, extracted: list[dict]) -> None:
+    parts: list[str] = []
+    for entry in extracted:
+        if entry.get("method") != "html" or not entry.get("text_path"):
+            continue
+        path = out_dir / entry["text_path"]
+        if path.is_file():
+            parts.append(path.read_text(encoding="utf-8"))
+    for entry in extracted:
+        method = str(entry.get("method") or "")
+        if method in {"html", "pending", "error"} or method.startswith(("archive:", "unsupported")):
+            continue
+        if not entry.get("text_path"):
+            continue
+        path = out_dir / entry["text_path"]
+        if not path.is_file():
+            continue
+        text = path.read_text(encoding="utf-8").rstrip("\n")
+        parts.append(f"\n\n===== {entry.get('source')} =====\n\n{text}")
+    combined = normalize_text("\n\n".join(parts))
+    text_dir = out_dir / "text"
+    text_dir.mkdir(parents=True, exist_ok=True)
+    (text_dir / "_combined.txt").write_text(combined + "\n", encoding="utf-8")
+
+
+def _apply_heavy(out_dir: Path, items: list[dict]) -> None:
+    meta_path = out_dir / "meta.json"
+    if not meta_path.is_file():
+        return
+    raw = json.loads(meta_path.read_text(encoding="utf-8"))
+    by_source = {item["source"]: item for item in items}
+    replaced: set[str] = set()
+    extracted: list[dict] = []
+    notes = list(raw.get("notes") or [])
+    for entry in raw.get("extracted") or []:
+        source = entry.get("source")
+        item = by_source.get(source) if entry.get("method") == "pending" else None
+        if not item:
+            extracted.append(entry)
+            continue
+        replaced.add(source)
+        if item.get("method") == "error":
+            extracted.append({"source": source, "method": "error", "error": item.get("error")})
+            notes.append(f"extract failed: {source}: {item.get('error')}")
+        else:
+            extracted.append(
+                {
+                    "source": source,
+                    "text_path": item["text_path"],
+                    "method": item["method"],
+                    "chars": item["chars"],
+                }
+            )
+    for source, item in by_source.items():
+        if source in replaced:
+            continue
+        if item.get("method") == "error":
+            extracted.append({"source": source, "method": "error", "error": item.get("error")})
+            notes.append(f"extract failed: {source}: {item.get('error')}")
+        else:
+            extracted.append(
+                {
+                    "source": source,
+                    "text_path": item["text_path"],
+                    "method": item["method"],
+                    "chars": item["chars"],
+                }
+            )
+    for doc in raw.get("documents") or []:
+        doc.pop("deferred", None)
+    raw["extracted"] = extracted
+    raw["notes"] = notes
+    _rebuild_combined(out_dir, extracted)
+    meta_path.write_text(json.dumps(raw, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+
+async def finish_heavy(tasks: list) -> list[dict]:
+    """Дождаться OCR/LibreOffice и дописать meta.json.
+
+    Возвращает ошибки служебной обработки; ошибки извлечения
+    отдельных файлов сами попадают в meta.json как method=error.
+    """
+    if not tasks:
+        return []
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+    grouped: dict[str, list[dict]] = {}
+    errors: list[dict] = []
+    for item in results:
+        if isinstance(item, Exception):
+            print(f"heavy extract failed: {item}", file=sys.stderr)
+            errors.append({"out_dir": None, "error": str(item)})
+            continue
+        if not item:
+            continue
+        grouped.setdefault(item["out_dir"], []).append(item)
+    for dir_s, items in grouped.items():
+        try:
+            _apply_heavy(Path(dir_s), items)
+        except Exception as exc:  # noqa: BLE001 — остальные meta всё равно обновляем
+            print(f"heavy meta update failed for {dir_s}: {exc}", file=sys.stderr)
+            errors.append({"out_dir": dir_s, "error": str(exc)})
+    tasks.clear()
+    return errors
+
+
+def _is_forbidden(exc: BaseException) -> bool:
+    return getattr(exc, "code", None) == 403 or "403" in str(exc)
 
 
 def decode_html(data: bytes) -> str:
@@ -350,7 +580,7 @@ def discover_procurement_ids_from_complaint_dir(
     return out
 
 
-def attach_notices(
+async def attach_notices_async(
     complaint_dir: Path,
     notice_out_root: Path,
     *,
@@ -358,10 +588,12 @@ def attach_notices(
     sleep_s: float = 1.5,
     timeout: float = 15.0,
     insecure: bool = False,
+    heavy_tasks: list | None = None,
 ) -> list[Path]:
     """Связать жалобу с извещениями: использовать уже скачанные или докачать.
 
     Пишет в meta жалобы: procurement_ids (очищенные) и notice_dirs.
+    heavy_tasks — общий список OCR/LibreOffice, если этапы стыкует вызывающий код.
     """
     meta_path = complaint_dir / "meta.json"
     if not meta_path.exists():
@@ -383,49 +615,78 @@ def attach_notices(
     notice_out_root = Path(notice_out_root)
     notice_out_root.mkdir(parents=True, exist_ok=True)
 
-    from ingest.notices.download import fetch_notice
+    from ingest.notices.download import fetch_notice_async
 
-    for pid in pids:
-        npath = notice_out_root / pid
-        if (npath / "meta.json").exists():
-            print(f"Link existing notice {pid} → {npath}", file=sys.stderr)
-        elif fetch_missing:
-            print(f"Fetching linked notice {pid} …", file=sys.stderr)
-            npath = fetch_notice(
-                pid,
-                notice_out_root,
-                sleep_s=sleep_s,
-                timeout=timeout,
-                insecure=insecure,
-            )
-        else:
-            print(
-                f"skip missing notice {pid} (нет {npath}); "
-                f"скачайте: notice --number {pid}",
-                file=sys.stderr,
-            )
-            continue
+    own_tasks = heavy_tasks is None
+    tasks: list = [] if own_tasks else heavy_tasks
+    try:
+        for pid in pids:
+            npath = notice_out_root / pid
+            if (npath / "meta.json").exists():
+                print(f"Link existing notice {pid} → {npath}", file=sys.stderr)
+            elif fetch_missing:
+                print(f"Fetching linked notice {pid} …", file=sys.stderr)
+                npath = await fetch_notice_async(
+                    pid,
+                    notice_out_root,
+                    sleep_s=sleep_s,
+                    timeout=timeout,
+                    insecure=insecure,
+                    heavy_tasks=tasks,
+                )
+            else:
+                print(
+                    f"skip missing notice {pid} (нет {npath}); "
+                    f"скачайте: notice --number {pid}",
+                    file=sys.stderr,
+                )
+                continue
 
-        # обратная ссылка в meta извещения
-        nmeta_path = npath / "meta.json"
-        nmeta = json.loads(nmeta_path.read_text(encoding="utf-8"))
-        linked_c = list(nmeta.get("linked_complaints") or [])
-        if complaint_number not in linked_c:
-            linked_c.append(complaint_number)
-            nmeta["linked_complaints"] = linked_c
-            nmeta_path.write_text(
-                json.dumps(nmeta, ensure_ascii=False, indent=2) + "\n",
-                encoding="utf-8",
-            )
+            # обратная ссылка в meta извещения
+            nmeta_path = npath / "meta.json"
+            nmeta = json.loads(nmeta_path.read_text(encoding="utf-8"))
+            linked_c = list(nmeta.get("linked_complaints") or [])
+            if complaint_number not in linked_c:
+                linked_c.append(complaint_number)
+                nmeta["linked_complaints"] = linked_c
+                nmeta_path.write_text(
+                    json.dumps(nmeta, ensure_ascii=False, indent=2) + "\n",
+                    encoding="utf-8",
+                )
 
-        rel = str(npath)
-        notice_dirs.append(rel)
-        linked.append(npath)
+            rel = str(npath)
+            notice_dirs.append(rel)
+            linked.append(npath)
 
-    raw["procurement_ids"] = pids
-    raw["notice_dirs"] = notice_dirs
-    meta_path.write_text(json.dumps(raw, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    return linked
+        raw["procurement_ids"] = pids
+        raw["notice_dirs"] = notice_dirs
+        meta_path.write_text(json.dumps(raw, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        return linked
+    finally:
+        if own_tasks:
+            await finish_heavy(tasks)
+
+
+def attach_notices(
+    complaint_dir: Path,
+    notice_out_root: Path,
+    *,
+    fetch_missing: bool = True,
+    sleep_s: float = 1.5,
+    timeout: float = 15.0,
+    insecure: bool = False,
+) -> list[Path]:
+    """Синхронная обёртка: дожидается и скачивания, и OCR/LibreOffice."""
+    return asyncio.run(
+        attach_notices_async(
+            complaint_dir,
+            notice_out_root,
+            fetch_missing=fetch_missing,
+            sleep_s=sleep_s,
+            timeout=timeout,
+            insecure=insecure,
+        )
+    )
 
 
 class _AnchorCollector(HTMLParser):
@@ -606,47 +867,75 @@ def ingest_card_html(
     return meta
 
 
-def download_listed_documents(
+async def download_listed_documents(
     meta: ComplaintMeta,
     out_dir: Path,
     *,
     sleep_s: float = 1.5,
     timeout: float = 120.0,
     insecure: bool = False,
+    heavy_tasks: list | None = None,
 ) -> ComplaintMeta:
+    """Скачать вложения по одному. Тяжёлый разбор ставится в heavy_tasks и не ждётся."""
     files_dir = out_dir / "files"
     files_dir.mkdir(parents=True, exist_ok=True)
     updated: list[dict] = []
     for i, doc in enumerate(meta.documents, start=1):
         url = doc["url"]
         title = doc.get("title")
+        if is_explicit_bin(url, title):
+            updated.append({**doc, "status": "skipped", "reason": "bin"})
+            meta.notes.append(f"skip bin: {title or url}")
+            continue
         try:
-            data, ctype, final_url = http_get(
-                url, timeout=timeout, sleep_s=sleep_s, insecure=insecure
+            data, ctype, final_url = await download_url(
+                url,
+                timeout=timeout,
+                sleep_s=sleep_s,
+                insecure=insecure,
+                max_bytes=MAX_ATTACHMENT_BYTES,
+                title=title,
+                reject_bin=True,
             )
-            time.sleep(sleep_s)
             fname = guess_filename(final_url or url, title, ctype, i)
-            # avoid overwrite
             dest = files_dir / fname
             if dest.exists():
                 dest = files_dir / f"{dest.stem}_{i}{dest.suffix}"
-            save_bytes(dest, data)
-            # ЕИС часто кладёт DOCX/ZIP под именем .pdf — поправим расширение
-            fixed = correct_suffix(dest)
+            fixed, digest = await asyncio.to_thread(_commit_download, dest, data)
             if fixed != dest:
                 meta.notes.append(f"renamed by magic: {dest.name} → {fixed.name}")
                 dest = fixed
-            updated.append(
-                {
-                    **doc,
-                    "status": "downloaded",
-                    "path": f"files/{dest.name}",
-                    "content_type": ctype,
-                    "sha256": sha256_bytes(data),
-                    "bytes": len(data),
-                    "final_url": final_url,
-                }
-            )
+            if fixed.suffix.lower() == ".bin":
+                fixed.unlink(missing_ok=True)
+                updated.append({**doc, "status": "skipped", "reason": "bin"})
+                meta.notes.append(f"skip bin after sniff: {title or url}")
+                continue
+            record = {
+                **doc,
+                "status": "downloaded",
+                "path": f"files/{fixed.name}",
+                "content_type": ctype,
+                "sha256": digest,
+                "bytes": len(data),
+                "final_url": final_url,
+            }
+            if heavy_tasks is not None:
+                try:
+                    kind = await asyncio.to_thread(heavy_kind, fixed)
+                except Exception as exc:  # noqa: BLE001
+                    meta.notes.append(f"heavy check failed: {fixed.name}: {exc}")
+                    kind = None
+                if kind:
+                    record["deferred"] = kind
+                    heavy_tasks.append(
+                        asyncio.create_task(
+                            _persist_heavy(out_dir, fixed, record["path"], Path(record["path"]).stem)
+                        )
+                    )
+            updated.append(record)
+        except DownloadRejected as exc:
+            updated.append({**doc, "status": "skipped", "reason": exc.reason})
+            meta.notes.append(f"skip {exc.reason}: {title or url}")
         except Exception as exc:  # noqa: BLE001 — копим ошибки по файлам
             updated.append({**doc, "status": "error", "error": str(exc)})
             meta.notes.append(f"download failed: {url}: {exc}")
@@ -654,7 +943,11 @@ def download_listed_documents(
     return meta
 
 
-def extract_all_files(meta: ComplaintMeta, out_dir: Path) -> ComplaintMeta:
+async def extract_all_files_async(
+    meta: ComplaintMeta,
+    out_dir: Path,
+    heavy_tasks: list | None = None,
+) -> ComplaintMeta:
     text_dir = out_dir / "text"
     text_dir.mkdir(parents=True, exist_ok=True)
     extracted = [e for e in meta.extracted if e.get("method") == "html"]
@@ -674,6 +967,11 @@ def extract_all_files(meta: ComplaintMeta, out_dir: Path) -> ComplaintMeta:
         rel = doc.get("path")
         if not rel:
             continue
+        if doc.get("deferred"):
+            extracted.append(
+                {"source": rel, "method": "pending", "heavy": doc["deferred"]}
+            )
+            continue
         path = out_dir / rel
         queue.append((path, rel, Path(rel).stem))
 
@@ -686,8 +984,20 @@ def extract_all_files(meta: ComplaintMeta, out_dir: Path) -> ComplaintMeta:
         if not path.is_file():
             meta.notes.append(f"missing file: {source}")
             continue
+        if heavy_tasks is not None:
+            try:
+                kind = await asyncio.to_thread(heavy_kind, path)
+            except Exception as exc:  # noqa: BLE001
+                meta.notes.append(f"heavy check failed: {source}: {exc}")
+                kind = None
+            if kind:
+                heavy_tasks.append(
+                    asyncio.create_task(_persist_heavy(out_dir, path, source, text_stem))
+                )
+                extracted.append({"source": source, "method": "pending", "heavy": kind})
+                continue
         try:
-            text, method = extract_file(path)
+            text, method = await asyncio.to_thread(extract_file, path)
         except Exception as exc:  # noqa: BLE001
             extracted.append(
                 {
@@ -703,7 +1013,7 @@ def extract_all_files(meta: ComplaintMeta, out_dir: Path) -> ComplaintMeta:
             unpack_rel = f"files/{Path(source).stem}_unpacked"
             unpack_dir = (out_dir / unpack_rel).resolve()
             try:
-                members = safe_unpack_zip(path, unpack_dir)
+                members = await asyncio.to_thread(safe_unpack_zip, path, unpack_dir)
             except Exception as exc:  # noqa: BLE001
                 extracted.append(
                     {"source": source, "method": "error", "error": str(exc)}
@@ -740,8 +1050,7 @@ def extract_all_files(meta: ComplaintMeta, out_dir: Path) -> ComplaintMeta:
             continue
 
         out_path = text_dir / Path(text_stem).with_suffix(".txt")
-        out_path.parent.mkdir(parents=True, exist_ok=True)
-        out_path.write_text(text + "\n", encoding="utf-8")
+        await asyncio.to_thread(_write_text, out_path, text + "\n")
         text_rel = out_path.relative_to(text_dir).as_posix()
         extracted.append(
             {
@@ -755,9 +1064,18 @@ def extract_all_files(meta: ComplaintMeta, out_dir: Path) -> ComplaintMeta:
             combined_parts.append(f"\n\n===== {source} =====\n\n{text}")
 
     combined = normalize_text("\n\n".join(combined_parts))
-    (text_dir / "_combined.txt").write_text(combined + "\n", encoding="utf-8")
+    await asyncio.to_thread(_write_text, text_dir / "_combined.txt", combined + "\n")
     meta.extracted = extracted
     return meta
+
+
+def extract_all_files(
+    meta: ComplaintMeta,
+    out_dir: Path,
+    heavy_tasks: list | None = None,
+) -> ComplaintMeta:
+    """Синхронный разбор, когда цикла событий нет (офлайн-карточка, команда extract)."""
+    return asyncio.run(extract_all_files_async(meta, out_dir, heavy_tasks))
 
 
 def write_meta(meta: ComplaintMeta, out_dir: Path) -> None:
@@ -765,6 +1083,168 @@ def write_meta(meta: ComplaintMeta, out_dir: Path) -> None:
         json.dumps(asdict(meta), ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
     )
+
+
+async def fetch_complaint_async(
+    complaint_number: str,
+    out_root: Path,
+    *,
+    sleep_s: float = 1.5,
+    timeout: float = 15.0,
+    skip_download: bool = False,
+    insecure: bool = False,
+    heavy_tasks: list | None = None,
+) -> Path:
+    out_dir = complaint_dir(out_root, complaint_number)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    urls = card_urls(complaint_number)
+    # Сначала актуальная вкладка; устаревшие common/documents — только fallback.
+    preferred = ("information", "common", "documents")
+    own_tasks = heavy_tasks is None
+    tasks: list = [] if own_tasks else heavy_tasks
+    try:
+        return await _fetch_complaint_body(
+            complaint_number,
+            out_dir,
+            urls,
+            preferred,
+            tasks,
+            sleep_s=sleep_s,
+            timeout=timeout,
+            skip_download=skip_download,
+            insecure=insecure,
+        )
+    finally:
+        if own_tasks:
+            await finish_heavy(tasks)
+
+
+async def _fetch_complaint_body(
+    complaint_number: str,
+    out_dir: Path,
+    urls: dict[str, str],
+    preferred: tuple[str, ...],
+    tasks: list,
+    *,
+    sleep_s: float,
+    timeout: float,
+    skip_download: bool,
+    insecure: bool,
+) -> Path:
+    meta: ComplaintMeta | None = None
+    got_html = False
+    fallback_notes: list[str] = []
+    forbidden = False
+
+    async def _try_card(key: str) -> ComplaintMeta:
+        url = urls[key]
+        data, _ctype, final = await download_url(
+            url, timeout=timeout, sleep_s=sleep_s, insecure=insecure
+        )
+        html = await asyncio.to_thread(decode_html, data)
+        if len(html.strip()) < 200:
+            raise RuntimeError(
+                f"слишком короткий ответ ({len(html)} символов) — "
+                "возможно, блокировка/капча или неверный номер жалобы"
+            )
+        return await asyncio.to_thread(
+            ingest_card_html,
+            complaint_number=complaint_number,
+            html=html,
+            out_dir=out_dir,
+            card_name=f"card_{key}.html",
+            card_url=final,
+        )
+
+    for key in preferred:
+        try:
+            meta = await _try_card(key)
+            got_html = True
+            break  # одной рабочей вкладки достаточно
+        except Exception as exc:  # noqa: BLE001
+            note = f"card {key} failed: {exc}"
+            # 404 по устаревшим вкладкам не шумим в stderr, если information уже ок
+            # (до break сюда не дойдём). Пока ищем — пишем только не-404 или первый ключ.
+            if key == "information" or "404" not in str(exc):
+                print(note, file=sys.stderr)
+            fallback_notes.append(note)
+            if _is_forbidden(exc):
+                # 403 — ограничение частоты, а не отсутствие вкладки.
+                forbidden = True
+                break
+            if meta is None:
+                meta = ComplaintMeta(
+                    complaint_number=complaint_number,
+                    card_url=urls[key],
+                    downloaded_at=datetime.now(timezone.utc).isoformat(),
+                    notes=list(fallback_notes),
+                )
+            else:
+                meta.notes.append(note)
+
+    if not got_html and forbidden:
+        for pause in FORBIDDEN_COOLDOWN_S:
+            print(
+                f"403 у карточки {complaint_number}: пауза {pause:.0f} с и повтор",
+                file=sys.stderr,
+            )
+            await asyncio.sleep(pause)
+            try:
+                meta = await _try_card("information")
+                got_html = True
+                break
+            except Exception as exc:  # noqa: BLE001
+                note = f"card information failed: {exc}"
+                print(note, file=sys.stderr)
+                fallback_notes.append(note)
+                if not _is_forbidden(exc):
+                    break
+
+    if got_html:
+        assert meta is not None
+        # Не оставляем шум от устаревших 404, если information уже скачана.
+        meta.notes = [
+            n
+            for n in meta.notes
+            if not (
+                n.startswith("card common failed:")
+                or n.startswith("card documents failed:")
+            )
+        ]
+    if not got_html:
+        # 403 не записываем как готовую карточку: иначе пакет больше её не возьмёт.
+        notes = meta.notes if meta is not None else fallback_notes
+        if not forbidden and meta is not None:
+            write_meta(meta, out_dir)
+        hint = ""
+        if any("CERTIFICATE_VERIFY_FAILED" in n for n in notes):
+            hint = (
+                "\nПохоже на SSL/прокси. Повторите с --insecure или сохраните карточку "
+                "из браузера и: fetch --from-html card.html --complaint-number …"
+            )
+        where = (
+            "Повтор при следующем запуске, meta.json не записан."
+            if forbidden
+            else f"Смотрите {out_dir / 'meta.json'}."
+        )
+        detail = fallback_notes[-1] if fallback_notes else "причина неизвестна"
+        raise RuntimeError(
+            f"Не удалось скачать HTML карточки жалобы {complaint_number}. "
+            f"{where} Последняя ошибка: {detail}{hint}"
+        )
+
+    if not skip_download and meta.documents:
+        meta = await download_listed_documents(
+            meta,
+            out_dir,
+            sleep_s=sleep_s,
+            timeout=timeout,
+            insecure=insecure,
+            heavy_tasks=tasks,
+        )
+    meta = await extract_all_files_async(meta, out_dir, heavy_tasks=tasks)
+    write_meta(meta, out_dir)
+    return out_dir
 
 
 def fetch_complaint(
@@ -776,86 +1256,17 @@ def fetch_complaint(
     skip_download: bool = False,
     insecure: bool = False,
 ) -> Path:
-    out_dir = complaint_dir(out_root, complaint_number)
-    out_dir.mkdir(parents=True, exist_ok=True)
-    urls = card_urls(complaint_number)
-    # Сначала актуальная вкладка; устаревшие common/documents — только fallback.
-    preferred = ("information", "common", "documents")
-    meta: ComplaintMeta | None = None
-    got_html = False
-    fallback_notes: list[str] = []
-
-    for key in preferred:
-        url = urls[key]
-        try:
-            data, _ctype, final = http_get(
-                url, timeout=timeout, sleep_s=sleep_s, insecure=insecure
-            )
-            time.sleep(sleep_s)
-            html = decode_html(data)
-            if len(html.strip()) < 200:
-                raise RuntimeError(
-                    f"слишком короткий ответ ({len(html)} символов) — "
-                    "возможно, блокировка/капча или неверный номер жалобы"
-                )
-            piece = ingest_card_html(
-                complaint_number=complaint_number,
-                html=html,
-                out_dir=out_dir,
-                card_name=f"card_{key}.html",
-                card_url=final,
-            )
-            got_html = True
-            meta = piece
-            break  # одной рабочей вкладки достаточно
-        except Exception as exc:  # noqa: BLE001
-            note = f"card {key} failed: {exc}"
-            # 404 по устаревшим вкладкам не шумим в stderr, если information уже ок
-            # (до break сюда не дойдём). Пока ищем — пишем только не-404 или первый ключ.
-            if key == "information" or "404" not in str(exc):
-                print(note, file=sys.stderr)
-            fallback_notes.append(note)
-            if meta is None:
-                meta = ComplaintMeta(
-                    complaint_number=complaint_number,
-                    card_url=url,
-                    downloaded_at=datetime.now(timezone.utc).isoformat(),
-                    notes=list(fallback_notes),
-                )
-            else:
-                meta.notes.append(note)
-
-    assert meta is not None
-    # Не оставляем шум от устаревших 404, если information уже скачана.
-    if got_html:
-        meta.notes = [
-            n
-            for n in meta.notes
-            if not (
-                n.startswith("card common failed:")
-                or n.startswith("card documents failed:")
-            )
-        ]
-    if not got_html:
-        write_meta(meta, out_dir)
-        hint = ""
-        if any("CERTIFICATE_VERIFY_FAILED" in n for n in meta.notes):
-            hint = (
-                "\nПохоже на SSL/прокси. Повторите с --insecure или сохраните карточку "
-                "из браузера и: fetch --from-html card.html --complaint-number …"
-            )
-        raise RuntimeError(
-            f"Не удалось скачать HTML карточки жалобы {complaint_number}. "
-            f"Смотрите {out_dir / 'meta.json'}.{hint}"
+    """Синхронная обёртка: дожидается и скачивания, и OCR/LibreOffice."""
+    return asyncio.run(
+        fetch_complaint_async(
+            complaint_number,
+            out_root,
+            sleep_s=sleep_s,
+            timeout=timeout,
+            skip_download=skip_download,
+            insecure=insecure,
         )
-
-    if not skip_download and meta.documents:
-        meta = download_listed_documents(
-            meta, out_dir, sleep_s=sleep_s, timeout=timeout, insecure=insecure
-        )
-    meta = extract_all_files(meta, out_dir)
-    write_meta(meta, out_dir)
-    return out_dir
+    )
 
 
 def fetch_from_html_file(
@@ -878,8 +1289,8 @@ def fetch_from_html_file(
         card_url=None,
     )
     if download and meta.documents:
-        meta = download_listed_documents(
-            meta, out_dir, sleep_s=sleep_s, insecure=insecure
+        meta = asyncio.run(
+            download_listed_documents(meta, out_dir, sleep_s=sleep_s, insecure=insecure)
         )
     meta = extract_all_files(meta, out_dir)
     write_meta(meta, out_dir)
@@ -944,35 +1355,47 @@ def cmd_complaint(args: argparse.Namespace) -> int:
         )
         return 2
 
-    failed = 0
-    for num in numbers:
-        print(f"Fetching complaint {num} …", file=sys.stderr)
+    async def _run() -> int:
+        failed = 0
+        tasks: list = []
         try:
-            path = fetch_complaint(
-                num,
-                out_root,
-                sleep_s=args.sleep,
-                timeout=args.timeout,
-                skip_download=args.skip_download,
-                insecure=args.insecure,
-            )
-            print(path)
-            if args.with_notice:
-                linked = attach_notices(
-                    path,
-                    Path(args.notice_out_root),
-                    fetch_missing=not args.link_only,
-                    sleep_s=args.sleep,
-                    timeout=args.timeout,
-                    insecure=args.insecure,
-                )
-                for npath in linked:
-                    print(npath)
-        except RuntimeError as exc:
-            print(str(exc), file=sys.stderr)
-            failed += 1
-        time.sleep(args.sleep)
-    return 1 if failed else 0
+            for num in numbers:
+                print(f"Fetching complaint {num} …", file=sys.stderr)
+                try:
+                    path = await fetch_complaint_async(
+                        num,
+                        out_root,
+                        sleep_s=args.sleep,
+                        timeout=args.timeout,
+                        skip_download=args.skip_download,
+                        insecure=args.insecure,
+                        heavy_tasks=tasks,
+                    )
+                    print(path)
+                    if args.with_notice:
+                        linked = await attach_notices_async(
+                            path,
+                            Path(args.notice_out_root),
+                            fetch_missing=not args.link_only,
+                            sleep_s=args.sleep,
+                            timeout=args.timeout,
+                            insecure=args.insecure,
+                            heavy_tasks=tasks,
+                        )
+                        for npath in linked:
+                            print(npath)
+                except RuntimeError as exc:
+                    print(str(exc), file=sys.stderr)
+                    failed += 1
+                    if _is_forbidden(exc):
+                        await asyncio.sleep(max(args.sleep, FORBIDDEN_COOLDOWN_S[0]))
+                        continue
+                await asyncio.sleep(args.sleep)
+        finally:
+            await finish_heavy(tasks)
+        return 1 if failed else 0
+
+    return asyncio.run(_run())
 
 
 def cmd_link(args: argparse.Namespace) -> int:
@@ -1006,7 +1429,7 @@ def cmd_link(args: argparse.Namespace) -> int:
 
 
 def cmd_notice(args: argparse.Namespace) -> int:
-    from ingest.notices.download import fetch_notice
+    from ingest.notices.download import fetch_notice_async
 
     out_root = Path(args.out_root)
     numbers = _collect_numbers(args)
@@ -1014,25 +1437,36 @@ def cmd_notice(args: argparse.Namespace) -> int:
         print("Укажите --number <regNumber извещения>", file=sys.stderr)
         return 2
 
-    failed = 0
-    for num in numbers:
-        print(f"Fetching notice {num} …", file=sys.stderr)
+    async def _run() -> int:
+        failed = 0
+        tasks: list = []
         try:
-            path = fetch_notice(
-                num,
-                out_root,
-                sleep_s=args.sleep,
-                timeout=args.timeout,
-                skip_download=args.skip_download,
-                insecure=args.insecure,
-                kind=args.kind,
-            )
-            print(path)
-        except RuntimeError as exc:
-            print(str(exc), file=sys.stderr)
-            failed += 1
-        time.sleep(args.sleep)
-    return 1 if failed else 0
+            for num in numbers:
+                print(f"Fetching notice {num} …", file=sys.stderr)
+                try:
+                    path = await fetch_notice_async(
+                        num,
+                        out_root,
+                        sleep_s=args.sleep,
+                        timeout=args.timeout,
+                        skip_download=args.skip_download,
+                        insecure=args.insecure,
+                        kind=args.kind,
+                        heavy_tasks=tasks,
+                    )
+                    print(path)
+                except RuntimeError as exc:
+                    print(str(exc), file=sys.stderr)
+                    failed += 1
+                    if _is_forbidden(exc):
+                        await asyncio.sleep(max(args.sleep, FORBIDDEN_COOLDOWN_S[0]))
+                        continue
+                await asyncio.sleep(args.sleep)
+        finally:
+            await finish_heavy(tasks)
+        return 1 if failed else 0
+
+    return asyncio.run(_run())
 
 
 def cmd_extract(args: argparse.Namespace) -> int:
@@ -1068,7 +1502,12 @@ def cmd_extract(args: argparse.Namespace) -> int:
 
 def build_parser() -> argparse.ArgumentParser:
     common = argparse.ArgumentParser(add_help=False)
-    common.add_argument("--sleep", type=float, default=1.5, help="Пауза между запросами, сек")
+    common.add_argument(
+        "--sleep",
+        type=float,
+        default=1.5,
+        help="Пауза между жалобами и после ответа 403, сек. После успеха — 0,1 с",
+    )
     common.add_argument("--timeout", type=float, default=15.0)
     common.add_argument(
         "--insecure",

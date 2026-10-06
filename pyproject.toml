@@ -14,6 +14,7 @@ dev = [
 ]
 fas = [
     "pypdf>=4.0",
+    "fonttools>=4.0",
     "mammoth>=1.8",
 ]
 retrieval = [
