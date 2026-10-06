@@ -2,18 +2,22 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import sys
-import time
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 
 from ingest.fas.download import (
     ComplaintMeta,
+    FORBIDDEN_COOLDOWN_S,
+    _is_forbidden,
     decode_html,
     download_listed_documents,
-    extract_all_files,
+    download_url,
+    extract_all_files_async,
+    finish_heavy,
     http_get,
     parse_document_links,
 )
@@ -89,14 +93,24 @@ def probe_notice_kind(
                 return kind, html, final
             except Exception as exc:  # noqa: BLE001
                 errors.append(f"{kind}/{key}: {exc}")
-            time.sleep(sleep_s)
     raise RuntimeError(
         f"Не удалось открыть извещение {procurement_id}. Пробовали {NOTICE_KINDS}. "
         f"Последние ошибки: {errors[-6:]}"
     )
 
 
-def fetch_notice(
+def _page_ok(html: str, procurement_id: str) -> bool:
+    if len(html) < 1500:
+        return False
+    low = html.lower()[:4000]
+    if "не найден" in low and ("404" in html[:3000] or "ошибка" in low):
+        return False
+    if procurement_id not in html and "regNumber" not in html:
+        return False
+    return True
+
+
+async def fetch_notice_async(
     procurement_id: str,
     out_root: Path,
     *,
@@ -105,34 +119,129 @@ def fetch_notice(
     skip_download: bool = False,
     insecure: bool = False,
     kind: str | None = None,
+    heavy_tasks: list | None = None,
+) -> Path:
+    """Открыть извещение. По умолчанию сразу ea20, без повторного скачивания той же вкладки."""
+    own_tasks = heavy_tasks is None
+    tasks: list = [] if own_tasks else heavy_tasks
+    try:
+        return await _fetch_notice_body(
+            procurement_id,
+            out_root,
+            tasks,
+            sleep_s=sleep_s,
+            timeout=timeout,
+            skip_download=skip_download,
+            insecure=insecure,
+            kind=kind,
+        )
+    finally:
+        if own_tasks:
+            await finish_heavy(tasks)
+
+
+async def _fetch_notice_body(
+    procurement_id: str,
+    out_root: Path,
+    tasks: list,
+    *,
+    sleep_s: float,
+    timeout: float,
+    skip_download: bool,
+    insecure: bool,
+    kind: str | None,
 ) -> Path:
     out_dir = out_root / procurement_id
     out_dir.mkdir(parents=True, exist_ok=True)
     raw_dir = out_dir / "raw"
     raw_dir.mkdir(parents=True, exist_ok=True)
 
-    if kind:
-        urls = notice_urls(procurement_id, kind)
-        data, _ctype, final = http_get(
-            urls["documents"], timeout=timeout, sleep_s=sleep_s, insecure=insecure
-        )
-        html = decode_html(data)
-        page_key = "documents"
-        if len(html) < 1500:
-            data, _ctype, final = http_get(
-                urls["common"], timeout=timeout, sleep_s=sleep_s, insecure=insecure
-            )
-            html = decode_html(data)
-            page_key = "common"
-        notice_kind = kind
-    else:
-        notice_kind, html, final = probe_notice_kind(
-            procurement_id, timeout=timeout, sleep_s=sleep_s, insecure=insecure
-        )
-        page_key = "probe"
-        urls = notice_urls(procurement_id, notice_kind)
+    kinds = (kind,) if kind else NOTICE_KINDS
+    errors: list[str] = []
+    forbidden = False
+    notice_kind: str | None = None
+    urls: dict[str, str] | None = None
+    pages: dict[str, str] = {}
+    finals: dict[str, str] = {}
 
-    (raw_dir / f"notice_{page_key}.html").write_text(html, encoding="utf-8")
+    for candidate in kinds:
+        candidate_urls = notice_urls(procurement_id, candidate)
+        got = False
+        for key in ("documents", "common"):
+            dest = raw_dir / f"notice_{key}.html"
+            if dest.is_file() and dest.stat().st_size >= 1500 and candidate == kinds[0]:
+                saved = await asyncio.to_thread(dest.read_text, encoding="utf-8")
+                if _page_ok(saved, procurement_id):
+                    pages[key] = saved
+                    got = True
+                    continue
+            try:
+                data, _ctype, final = await download_url(
+                    candidate_urls[key],
+                    timeout=timeout,
+                    sleep_s=sleep_s,
+                    insecure=insecure,
+                    retries=3 if candidate == kinds[0] else 1,
+                )
+            except Exception as exc:  # noqa: BLE001
+                errors.append(f"{candidate}/{key}: {exc}")
+                if _is_forbidden(exc):
+                    forbidden = True
+                    break
+                continue
+            html = await asyncio.to_thread(decode_html, data)
+            if not _page_ok(html, procurement_id):
+                errors.append(f"{candidate}/{key}: short or not a card")
+                continue
+            await asyncio.to_thread(dest.write_text, html, encoding="utf-8")
+            pages[key] = html
+            finals[key] = final
+            got = True
+        if forbidden:
+            break
+        if got:
+            notice_kind = candidate
+            urls = candidate_urls
+            break
+
+    if notice_kind is None and forbidden:
+        retry_urls = notice_urls(procurement_id, kinds[0])
+        for pause in FORBIDDEN_COOLDOWN_S:
+            print(
+                f"403 у извещения {procurement_id}: пауза {pause:.0f} с и повтор",
+                file=sys.stderr,
+            )
+            await asyncio.sleep(pause)
+            try:
+                data, _ctype, final = await download_url(
+                    retry_urls["documents"],
+                    timeout=timeout,
+                    sleep_s=sleep_s,
+                    insecure=insecure,
+                    retries=1,
+                )
+            except Exception as exc:  # noqa: BLE001
+                errors.append(f"{kinds[0]}/documents: {exc}")
+                if not _is_forbidden(exc):
+                    break
+                continue
+            html = await asyncio.to_thread(decode_html, data)
+            if not _page_ok(html, procurement_id):
+                errors.append(f"{kinds[0]}/documents: short or not a card")
+                break
+            dest = raw_dir / "notice_documents.html"
+            await asyncio.to_thread(dest.write_text, html, encoding="utf-8")
+            pages["documents"] = html
+            finals["documents"] = final
+            notice_kind = kinds[0]
+            urls = retry_urls
+            break
+
+    if notice_kind is None or urls is None:
+        raise RuntimeError(
+            f"Не удалось открыть извещение {procurement_id}. Пробовали {kinds}. "
+            f"Последние ошибки: {errors[-6:]}"
+        )
 
     existing_linked: list[str] = []
     existing_meta = out_dir / "meta.json"
@@ -147,43 +256,26 @@ def fetch_notice(
     meta = NoticeMeta(
         procurement_id=procurement_id,
         notice_kind=notice_kind,
-        card_url=urls["common"],
-        documents_url=urls["documents"],
+        card_url=finals.get("common") or urls["common"],
+        documents_url=finals.get("documents") or urls["documents"],
         linked_complaints=existing_linked,
         downloaded_at=datetime.now(timezone.utc).isoformat(),
     )
+    print(f"notice {procurement_id}: {notice_kind}", file=sys.stderr)
 
-    combined_html = html
-    for key in ("documents", "common"):
-        dest = raw_dir / f"notice_{key}.html"
-        if dest.exists():
-            combined_html += "\n" + dest.read_text(encoding="utf-8")
-            continue
-        try:
-            data, _ctype, final_u = http_get(
-                urls[key], timeout=timeout, sleep_s=sleep_s, insecure=insecure
-            )
-            time.sleep(sleep_s)
-            page_html = decode_html(data)
-            if len(page_html) >= 1500:
-                dest.write_text(page_html, encoding="utf-8")
-                combined_html += "\n" + page_html
-                if key == "common":
-                    meta.card_url = final_u
-                else:
-                    meta.documents_url = final_u
-        except Exception as exc:  # noqa: BLE001
-            meta.notes.append(f"notice {key} failed: {exc}")
-
-    links = parse_document_links(combined_html)
-    meta.documents = [{"url": l.url, "title": l.title, "status": "listed"} for l in links]
+    combined_html = "\n".join(pages[key] for key in ("documents", "common") if key in pages)
+    links = await asyncio.to_thread(parse_document_links, combined_html)
+    meta.documents = [{"url": link.url, "title": link.title, "status": "listed"} for link in links]
 
     text_dir = out_dir / "text"
     text_dir.mkdir(parents=True, exist_ok=True)
+    def _card_text(html_file: Path) -> str:
+        return extract_html(html_file.read_text(encoding="utf-8"))
+
     for html_file in sorted(raw_dir.glob("notice_*.html")):
-        card_text = extract_html(html_file.read_text(encoding="utf-8"))
+        card_text = await asyncio.to_thread(_card_text, html_file)
         out_txt = text_dir / f"{html_file.stem}.txt"
-        out_txt.write_text(card_text + "\n", encoding="utf-8")
+        await asyncio.to_thread(out_txt.write_text, card_text + "\n", encoding="utf-8")
         meta.extracted.append(
             {
                 "source": f"raw/{html_file.name}",
@@ -201,12 +293,17 @@ def fetch_notice(
         downloaded_at=meta.downloaded_at,
     )
     if not skip_download and bridge.documents:
-        bridge = download_listed_documents(
-            bridge, out_dir, sleep_s=sleep_s, timeout=timeout, insecure=insecure
+        bridge = await download_listed_documents(
+            bridge,
+            out_dir,
+            sleep_s=sleep_s,
+            timeout=timeout,
+            insecure=insecure,
+            heavy_tasks=tasks,
         )
         meta.documents = bridge.documents
         meta.notes = bridge.notes
-    bridge = extract_all_files(bridge, out_dir)
+    bridge = await extract_all_files_async(bridge, out_dir, heavy_tasks=tasks)
     meta.extracted = bridge.extracted
     meta.notes = bridge.notes
 
@@ -215,3 +312,27 @@ def fetch_notice(
         encoding="utf-8",
     )
     return out_dir
+
+
+def fetch_notice(
+    procurement_id: str,
+    out_root: Path,
+    *,
+    sleep_s: float = 1.5,
+    timeout: float = 15.0,
+    skip_download: bool = False,
+    insecure: bool = False,
+    kind: str | None = None,
+) -> Path:
+    """Синхронная обёртка: дожидается и скачивания, и OCR/LibreOffice."""
+    return asyncio.run(
+        fetch_notice_async(
+            procurement_id,
+            out_root,
+            sleep_s=sleep_s,
+            timeout=timeout,
+            skip_download=skip_download,
+            insecure=insecure,
+            kind=kind,
+        )
+    )

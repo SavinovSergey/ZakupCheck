@@ -233,6 +233,167 @@ def test_safe_unpack_zip_blocks_slip(tmp_path: Path) -> None:
     assert raised
 
 
+def test_explicit_bin_and_octet_stream_name() -> None:
+    from ingest.fas.download import is_explicit_bin, would_be_bin
+
+    assert is_explicit_bin("https://zakupki.gov.ru/files/scan.bin", None)
+    assert is_explicit_bin("https://zakupki.gov.ru/d", "вложение.bin")
+    assert not is_explicit_bin("https://zakupki.gov.ru/download.html", "Решение.pdf")
+    assert would_be_bin(
+        "https://zakupki.gov.ru/download.html", "Решение", "application/octet-stream"
+    )
+    assert not would_be_bin(
+        "https://zakupki.gov.ru/download.html", "Решение", "application/pdf"
+    )
+
+
+def test_403_retries_same_card_without_other_tabs(tmp_path: Path, monkeypatch) -> None:
+    import asyncio
+    import io
+    import urllib.error
+
+    from ingest.fas import download as d
+
+    seen: list[str] = []
+
+    async def fake_download(url: str, **_kwargs: object) -> tuple[bytes, str, str]:
+        seen.append(url)
+        raise urllib.error.HTTPError(
+            url, 403, "Forbidden", hdrs=None, fp=io.BytesIO(b"")
+        )
+
+    async def no_wait(_seconds: float) -> None:
+        return None
+
+    monkeypatch.setattr(d, "download_url", fake_download)
+    monkeypatch.setattr(d.asyncio, "sleep", no_wait)
+
+    async def run() -> None:
+        try:
+            await d.fetch_complaint_async("202600116297003180", tmp_path)
+            raised = False
+        except RuntimeError as exc:
+            raised = "403" in str(exc) or "meta.json не записан" in str(exc)
+        assert raised
+
+    asyncio.run(run())
+    assert seen
+    assert all("complaint-information.html" in url for url in seen)
+    assert not (tmp_path / "202600116297003180" / "meta.json").exists()
+
+
+def test_heavy_kind_broken_pdf_goes_to_ocr(tmp_path: Path) -> None:
+    from ingest.fas.extract import heavy_kind
+
+    path = tmp_path / "scan.pdf"
+    path.write_bytes(b"%PDF-1.4\nthis is not a real pdf")
+    assert heavy_kind(path) == "pdf-ocr"
+
+
+def test_heavy_kind_doc_does_not_call_libreoffice(tmp_path: Path, monkeypatch) -> None:
+    from ingest.fas.extract import heavy_kind
+
+    path = tmp_path / "заявка.doc"
+    path.write_bytes(b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1" + b"\x00" * 32)
+
+    def boom(_path: Path) -> str:
+        raise AssertionError("LibreOffice не должен запускаться на проверке")
+
+    monkeypatch.setattr("ingest.fas.extract.extract_doc", boom)
+    assert heavy_kind(path) == "doc-lo"
+
+
+def test_http_get_rejects_oversize_and_pauses_on_success(monkeypatch) -> None:
+    import threading
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+    from ingest.fas.download import SUCCESS_PAUSE_S, DownloadRejected, http_get
+
+    sleeps: list[float] = []
+    monkeypatch.setattr("ingest.fas.download.time.sleep", lambda seconds: sleeps.append(seconds))
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self) -> None:  # noqa: N802
+            if self.path == "/big":
+                self.send_response(200)
+                self.send_header("Content-Type", "application/pdf")
+                self.send_header("Content-Length", "99999999")
+                self.end_headers()
+                return
+            self.send_response(200)
+            self.send_header("Content-Type", "application/pdf")
+            body = b"%PDF-1.4 small"
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, fmt: str, *args: object) -> None:
+            return
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    port = server.server_address[1]
+    try:
+        try:
+            http_get(f"http://127.0.0.1:{port}/big", max_bytes=10, retries=1)
+            raised = False
+        except DownloadRejected as exc:
+            raised = exc.reason == "too-large"
+        assert raised
+        assert sleeps == []
+        _data, ctype, _final = http_get(f"http://127.0.0.1:{port}/ok", retries=1)
+        assert ctype == "application/pdf"
+        assert sleeps == [SUCCESS_PAUSE_S]
+    finally:
+        server.shutdown()
+
+
+def test_ocr_starts_before_next_download_finishes(tmp_path: Path, monkeypatch) -> None:
+    import asyncio
+    import threading
+
+    from ingest.fas.download import ComplaintMeta, download_listed_documents, finish_heavy
+
+    started = threading.Event()
+    release = threading.Event()
+
+    def fake_http(url: str, **_kwargs: object) -> tuple[bytes, str, str]:
+        if url.endswith("/b.pdf"):
+            assert started.wait(2), "OCR не начался, пока качался следующий файл"
+        return b"not-a-real-pdf", "application/pdf", url
+
+    async def fake_extract(_path: Path) -> tuple[str, str]:
+        started.set()
+        await asyncio.to_thread(release.wait)
+        return "текст со скана", "pdf-ocr"
+
+    monkeypatch.setattr("ingest.fas.download.http_get", fake_http)
+    monkeypatch.setattr("ingest.fas.download.extract_heavy", fake_extract)
+    monkeypatch.setattr("ingest.fas.download.heavy_kind", lambda _path: "pdf-ocr")
+
+    meta = ComplaintMeta(
+        complaint_number="1",
+        documents=[
+            {"url": "http://example.test/a.pdf", "title": "a.pdf", "status": "listed"},
+            {"url": "http://example.test/b.pdf", "title": "b.pdf", "status": "listed"},
+        ],
+    )
+
+    async def run() -> None:
+        tasks: list = []
+        updated = await download_listed_documents(meta, tmp_path, heavy_tasks=tasks)
+        assert started.is_set()
+        assert any(doc.get("deferred") == "pdf-ocr" for doc in updated.documents)
+        release.set()
+        await finish_heavy(tasks)
+
+    asyncio.run(run())
+    texts = sorted((tmp_path / "text").glob("*.txt"))
+    assert len(texts) == 2
+    assert all("текст со скана" in path.read_text(encoding="utf-8") for path in texts)
+
+
 def test_fetch_from_html_offline(tmp_path: Path) -> None:
     out = fetch_from_html_file(
         FIXTURES / "mini_card.html",
