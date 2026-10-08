@@ -19,6 +19,7 @@ fas = [
 ]
 retrieval = [
     "rank-bm25>=0.2.2",
+    "sentence-transformers>=3.0",
 ]
 
 [build-system]
