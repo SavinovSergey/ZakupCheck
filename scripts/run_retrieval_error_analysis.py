@@ -799,6 +799,191 @@ def _report(state: dict[str, Any], report_path: Path) -> None:
                     f"Полный отчёт: `{wide['report']}`.",
                 ]
             )
+    if "article_chunk_budget" in state:
+        budget = state["article_chunk_budget"]
+        surface = budget["surface_winner"]
+        adaptive = budget["two_pass_winner"]
+        surface_d = surface["diagnostics"]
+        adaptive_d = adaptive["diagnostics"]
+        adaptive_interval = budget["two_pass_vs_surface"]["interval"]
+        lines.extend(
+            [
+                "",
+                "## Совместный бюджет статей и чанков",
+                "",
+                f"На {budget['n']} dev/blind-кейсах проверены "
+                f"{budget['counts']['surface']} одноэтапных и "
+                f"{budget['counts']['two_pass']} двухпроходных конфигураций; "
+                f"{budget['counts']['genuinely_adaptive']} из последних действительно сокращают "
+                "shortlist минимум на пять статей в среднем.",
+                f"Лучшая общая поверхность сохраняет dense="
+                f"{surface['spec']['dense_articles']}, BM25="
+                f"{surface['spec']['bm25_articles']}, "
+                f"chunks/article={surface['spec']['chunks_per_article']}: article R@10 "
+                f"{surface['at10']['recall_article']:.3f}, exact R@10 "
+                f"{surface['at10']['recall_exact']:.3f}, mean/max CE-пар "
+                f"{surface['mean_scored_chunks']:.1f}/{surface['max_scored_chunks']}.",
+                f"Лучший настоящий two-pass берёт dense="
+                f"{adaptive['spec']['dense_articles']} и BM25="
+                f"{adaptive['spec']['bm25_articles']}, сначала "
+                f"{adaptive['spec']['first_pass_chunks']} чанка на статью, затем "
+                f"{adaptive['spec']['shortlist_articles']} статей × "
+                f"{adaptive['spec']['final_chunks_per_article']} чанков. Candidate article recall "
+                f"{adaptive_d['candidate_article_recall']:.3f} падает до "
+                f"{adaptive_d['shortlist_article_recall']:.3f} уже при shortlist; итоговые "
+                f"article/exact R@10 равны {adaptive['at10']['recall_article']:.3f}/"
+                f"{adaptive['at10']['recall_exact']:.3f} при "
+                f"{adaptive['mean_scored_chunks']:.1f} CE-пары в среднем.",
+                f"Разница two-pass к лучшей общей поверхности по article R@10 "
+                f"{adaptive_interval['mean_delta']:+.3f} (95% group-bootstrap "
+                f"[{adaptive_interval['low']:+.3f}; {adaptive_interval['high']:+.3f}]).",
+                f"Диагностика exact показывает отдельное узкое место: даже у победителя поверхности "
+                f"в пуле достижим exact recall {surface_d['pool_exact_recall']:.3f}, но в финальном "
+                f"top-10 остаётся {surface_d['final_exact_recall']:.3f}. Поэтому следующий шаг — "
+                "улучшать выбор shortlist и evidence-чанка, а не просто расширять число статей.",
+                f"Полный отчёт: `{budget['report']}`.",
+            ]
+        )
+    if "article_shortlist_fusion" in state:
+        fusion = state["article_shortlist_fusion"]
+        winner = fusion["winner"]
+        diagnostics = winner["diagnostics"]
+        ce_only = fusion["winners_by_strategy"]["ce_only"]
+        ce_interval = fusion["winner_vs_ce_only"]["interval"]
+        surface = fusion["joint_surface_baseline"]
+        surface_interval = fusion["winner_vs_joint_surface"]["interval"]
+        lines.extend(
+            [
+                "",
+                "## Retrieval-aware shortlist с cross-encoder",
+                "",
+                f"На dev/blind проверено {fusion['count']} конфигураций: CE-only, "
+                "трёхсторонний RRF dense+BM25+CE, защищённые квоты, "
+                "CE с retrieval-бонусом и dense+BM25 RRF с CE только для выбора чанка.",
+                f"Победитель: dense={winner['spec']['dense_articles']}, "
+                f"BM25={winner['spec']['bm25_articles']}, first-pass="
+                f"{winner['spec']['first_pass_chunks']}, shortlist="
+                f"{winner['spec']['shortlist_articles']}, RRF k={winner['spec']['k']}, "
+                f"веса dense:BM25:CE={winner['spec']['dense_weight']}:"
+                f"{winner['spec']['bm25_weight']}:{winner['spec']['ce_weight']}. Candidate article recall "
+                f"{diagnostics['candidate_article_recall']:.3f}→"
+                f"{diagnostics['shortlist_article_recall']:.3f}; финальные article/exact R@10 "
+                f"{winner['at10']['recall_article']:.3f}/{winner['at10']['recall_exact']:.3f}.",
+                f"Против CE-only article R@10 {ce_only['at10']['recall_article']:.3f}→"
+                f"{winner['at10']['recall_article']:.3f}, Δ {ce_interval['mean_delta']:+.3f} "
+                f"(95% CI [{ce_interval['low']:+.3f}; {ce_interval['high']:+.3f}]). "
+                f"Против прежней поверхности article R@10 "
+                f"{surface['at10']['recall_article']:.3f}→{winner['at10']['recall_article']:.3f}, "
+                f"Δ {surface_interval['mean_delta']:+.3f} (95% CI "
+                f"[{surface_interval['low']:+.3f}; {surface_interval['high']:+.3f}]); exact R@10 "
+                f"{surface['at10']['recall_exact']:.3f}→{winner['at10']['recall_exact']:.3f}.",
+                "Вывод: retrieval-ранги действительно исправляют ошибки узкого CE-pass: "
+                "потеря candidate→shortlist сокращается с 0.096 до 0.038. Оставшаяся "
+                "проблема — выбор exact evidence внутри статьи.",
+                f"Полный отчёт: `{fusion['report']}`.",
+            ]
+        )
+        if "eval" in fusion:
+            evaluated = fusion["eval"]
+            eval_dense = evaluated["dense_baseline"]
+            eval_winner = evaluated["winner"]["at10"]
+            eval_interval = evaluated["bootstrap_vs_dense"]
+            lines.extend(
+                [
+                    f"Однократный eval/blind: dense article-diverse → locked RRF "
+                    f"по article R@10 {eval_dense['recall_article']:.3f}→"
+                    f"{eval_winner['recall_article']:.3f}, по exact R@10 "
+                    f"{eval_dense['recall_exact']:.3f}→{eval_winner['recall_exact']:.3f}; "
+                    f"Δ article {eval_interval['mean_delta']:+.3f} (95% CI "
+                    f"[{eval_interval['low']:+.3f}; {eval_interval['high']:+.3f}])."
+                ]
+            )
+    if "evidence_selection" in state:
+        evidence = state["evidence_selection"]
+        baseline = evidence["baseline"]
+        top10 = evidence["best_top10"]
+        exact_top10 = evidence["best_exact_top10"]
+        pack20 = evidence["best_pack20"]
+        pack30 = evidence["best_pack30"]
+        top10_interval = evidence["top10_vs_baseline_exact"]
+        exact_top10_interval = evidence["exact_top10_vs_baseline_exact"]
+        pack20_interval = evidence["pack20_vs_baseline_exact"]
+        pack30_interval = evidence["pack30_vs_baseline_exact"]
+        lines.extend(
+            [
+                "",
+                "## Evidence selection внутри зафиксированных статей",
+                "",
+                f"На {evidence['n']} dev/blind-кейсах проверено {evidence['count']} конфигураций: "
+                "interleave, chunk-level RRF, diversity-aware RRF, retrieval-бонусы "
+                "и evidence packs с лимитом на статью.",
+                f"При жёстком top-10 расширение пула с 8 до 16 чанков на статью "
+                f"подняло exact R@10 {baseline['metrics']['recall_exact']:.3f}→"
+                f"{top10['metrics']['recall_exact']:.3f}; Δ {top10_interval['mean_delta']:+.3f} "
+                f"(95% CI [{top10_interval['low']:+.3f}; {top10_interval['high']:+.3f}]). "
+                "Обычный CE оказался лучше chunk-level fusion и retrieval-бонусов.",
+                f"Если под тем же лимитом 10 чанков отдать часть слотов вторым фрагментам, "
+                f"exact R@10 растёт до {exact_top10['metrics']['recall_exact']:.3f} (Δ "
+                f"{exact_top10_interval['mean_delta']:+.3f}, 95% CI "
+                f"[{exact_top10_interval['low']:+.3f}; {exact_top10_interval['high']:+.3f}]), "
+                f"но article R@10 падает до {exact_top10['metrics']['recall_article']:.3f}. "
+                "Это явный конфликт за один и тот же бюджет.",
+                f"Отдельный evidence pack дал намного больший эффект: exact recall "
+                f"{pack20['metrics']['recall_exact']:.3f} при 20 чанках (Δ "
+                f"{pack20_interval['mean_delta']:+.3f}, 95% CI "
+                f"[{pack20_interval['low']:+.3f}; {pack20_interval['high']:+.3f}]) и "
+                f"{pack30['metrics']['recall_exact']:.3f} при 30 (Δ "
+                f"{pack30_interval['mean_delta']:+.3f}, 95% CI "
+                f"[{pack30_interval['low']:+.3f}; {pack30_interval['high']:+.3f}]).",
+                "Вывод: article top-10 и evidence context нужно разделить. "
+                "Для article-метрики оставлять один чанк на статью; для генератора "
+                "добавлять второй/третий недублирующий evidence-чанк. Diversity помогла именно "
+                "широкому pack-30, но не выбору одного лучшего чанка.",
+                f"Полный отчёт: `{evidence['report']}`. Eval для этого подбора не использовался.",
+            ]
+        )
+    if "m700_evidence_refinement" in state:
+        refinement = state["m700_evidence_refinement"]
+        baseline = refinement["baseline_pack20"]
+        neighbor = refinement["best_neighbor"]
+        context_plain = refinement["context_plain_pack20"]
+        context = refinement["context_pack20"]
+        hierarchy = refinement["best_hierarchy"]
+        dynamic = refinement["best_dynamic"]
+        neighbor_interval = refinement["neighbor_vs_baseline"]
+        context_interval = refinement["context_vs_plain"]
+        dynamic_interval = refinement["dynamic_vs_baseline"]
+        oracle = refinement["oracle"]
+        lines.extend(
+            [
+                "",
+                "## Дополнительное улучшение evidence на m700",
+                "",
+                f"На dev/blind проверено {refinement['count']} варианта: соседние структурные чанки, "
+                "префикс статья/часть/пункт для cross-encoder, hierarchy bonus и динамический "
+                "pack с порогом и токен-бюджетом.",
+                f"Соседи не помогли: exact {baseline['metrics']['recall_exact']:.3f}→"
+                f"{neighbor['metrics']['recall_exact']:.3f}, Δ {neighbor_interval['mean_delta']:+.3f} "
+                f"(95% CI [{neighbor_interval['low']:+.3f}; {neighbor_interval['high']:+.3f}]). "
+                f"Структурный CE-префикс также ухудшил exact на одинаковом пуле "
+                f"{context_plain['metrics']['recall_exact']:.3f}→{context['metrics']['recall_exact']:.3f}, "
+                f"Δ {context_interval['mean_delta']:+.3f} (95% CI "
+                f"[{context_interval['low']:+.3f}; {context_interval['high']:+.3f}]).",
+                f"Hierarchy bonus сохранил exact {hierarchy['metrics']['recall_exact']:.3f}, "
+                "но не дал прироста. Полезный результат — динамический pack на исходном "
+                f"пуле из 8 кандидатов/статью: exact остался "
+                f"{baseline['metrics']['recall_exact']:.3f}→{dynamic['metrics']['recall_exact']:.3f} "
+                f"(Δ {dynamic_interval['mean_delta']:+.3f}), а средний выход сократился "
+                f"с {baseline['mean_chunks']:.1f} до {dynamic['mean_chunks']:.1f} чанка и с "
+                f"{baseline['mean_estimated_tokens']:.0f} до {dynamic['mean_estimated_tokens']:.0f} условных токенов.",
+                f"Oracle-разложение {sum(oracle.values())} gold-id: hit={oracle['hit']}, "
+                f"article miss={oracle['article_not_selected']}, exact недостижим в m700="
+                f"{oracle['exact_unavailable_in_m700']}, candidate miss={oracle['candidate_miss']}, "
+                f"selection miss={oracle['selection_miss']}. Значительная часть оставшихся потерь "
+                "находится до evidence selection или в гранулярности корпуса.",
+                f"Полный отчёт: `{refinement['report']}`. Eval не использовался.",
+            ]
+        )
     if "reranker_runtime_comparison" in state:
         runtime = state["reranker_runtime_comparison"]
         by_name = {row["runtime"]: row for row in runtime["rows"]}

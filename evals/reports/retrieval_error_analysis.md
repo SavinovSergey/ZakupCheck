@@ -139,6 +139,41 @@ Dense m700 и BM25 m1500 сначала возвращают по 50 уника�
 **Рекомендация:** не заменять dense article-diverse этим вариантом: article-выигрыш dev не перенёсся на eval. Схема полезна как evidence-reranker из-за роста exact и all-hit на eval, но CPU-latency около 35.7 s/query слишком высока для production без более узкого candidate generator или дистилляции.
 Полный отчёт: `evals/reports/wide_article_rerank.md`.
 
+## Совместный бюджет статей и чанков
+
+На 52 dev/blind-кейсах проверены 305 одноэтапных и 1098 двухпроходных конфигураций; 882 из последних действительно сокращают shortlist минимум на пять статей в среднем.
+Лучшая общая поверхность сохраняет dense=5, BM25=10, chunks/article=8: article R@10 0.692, exact R@10 0.221, mean/max CE-пар 96.1/112.
+Лучший настоящий two-pass берёт dense=10 и BM25=10, сначала 2 чанка на статью, затем 10 статей × 8 чанков. Candidate article recall 0.769 падает до 0.673 уже при shortlist; итоговые article/exact R@10 равны 0.673/0.183 при 89.1 CE-пары в среднем.
+Разница two-pass к лучшей общей поверхности по article R@10 -0.019 (95% group-bootstrap [-0.130; +0.092]).
+Диагностика exact показывает отдельное узкое место: даже у победителя поверхности в пуле достижим exact recall 0.401, но в финальном top-10 остаётся 0.221. Поэтому следующий шаг — улучшать выбор shortlist и evidence-чанка, а не просто расширять число статей.
+Полный отчёт: `evals/reports/article_chunk_budget.md`.
+
+## Retrieval-aware shortlist с cross-encoder
+
+На dev/blind проверено 1113 конфигураций: CE-only, трёхсторонний RRF dense+BM25+CE, защищённые квоты, CE с retrieval-бонусом и dense+BM25 RRF с CE только для выбора чанка.
+Победитель: dense=10, BM25=10, first-pass=2, shortlist=10, RRF k=30, веса dense:BM25:CE=1:1:2. Candidate article recall 0.769→0.731; финальные article/exact R@10 0.731/0.202.
+Против CE-only article R@10 0.673→0.731, Δ +0.058 (95% CI [+0.000; +0.132]). Против прежней поверхности article R@10 0.692→0.731, Δ +0.038 (95% CI [-0.048; +0.132]); exact R@10 0.221→0.202.
+Вывод: retrieval-ранги действительно исправляют ошибки узкого CE-pass: потеря candidate→shortlist сокращается с 0.096 до 0.038. Оставшаяся проблема — выбор exact evidence внутри статьи.
+Полный отчёт: `evals/reports/article_shortlist_fusion.md`.
+Однократный eval/blind: dense article-diverse → locked RRF по article R@10 0.553→0.621, по exact R@10 0.136→0.152; Δ article +0.068 (95% CI [-0.045; +0.182]).
+
+## Evidence selection внутри зафиксированных статей
+
+На 52 dev/blind-кейсах проверено 480 конфигураций: interleave, chunk-level RRF, diversity-aware RRF, retrieval-бонусы и evidence packs с лимитом на статью.
+При жёстком top-10 расширение пула с 8 до 16 чанков на статью подняло exact R@10 0.202→0.215; Δ +0.013 (95% CI [-0.046; +0.073]). Обычный CE оказался лучше chunk-level fusion и retrieval-бонусов.
+Если под тем же лимитом 10 чанков отдать часть слотов вторым фрагментам, exact R@10 растёт до 0.247 (Δ +0.045, 95% CI [-0.044; +0.133]), но article R@10 падает до 0.654. Это явный конфликт за один и тот же бюджет.
+Отдельный evidence pack дал намного больший эффект: exact recall 0.314 при 20 чанках (Δ +0.112, 95% CI [+0.043; +0.192]) и 0.397 при 30 (Δ +0.196, 95% CI [+0.102; +0.301]).
+Вывод: article top-10 и evidence context нужно разделить. Для article-метрики оставлять один чанк на статью; для генератора добавлять второй/третий недублирующий evidence-чанк. Diversity помогла именно широкому pack-30, но не выбору одного лучшего чанка.
+Полный отчёт: `evals/reports/evidence_selection.md`. Eval для этого подбора не использовался.
+
+## Дополнительное улучшение evidence на m700
+
+На dev/blind проверено 133 варианта: соседние структурные чанки, префикс статья/часть/пункт для cross-encoder, hierarchy bonus и динамический pack с порогом и токен-бюджетом.
+Соседи не помогли: exact 0.314→0.311, Δ -0.003 (95% CI [-0.063; +0.057]). Структурный CE-префикс также ухудшил exact на одинаковом пуле 0.266→0.247, Δ -0.019 (95% CI [-0.061; +0.000]).
+Hierarchy bonus сохранил exact 0.314, но не дал прироста. Полезный результат — динамический pack на исходном пуле из 8 кандидатов/статью: exact остался 0.314→0.314 (Δ +0.000), а средний выход сократился с 20.0 до 17.6 чанка и с 3139 до 2684 условных токенов.
+Oracle-разложение 66 gold-id: hit=20, article miss=15, exact недостижим в m700=8, candidate miss=9, selection miss=14. Значительная часть оставшихся потерь находится до evidence selection или в гранулярности корпуса.
+Полный отчёт: `evals/reports/m700_evidence_refinement.md`. Eval не использовался.
+
 ## CPU runtime и квантование cross-encoder
 
 Truncated PyTorch FP32 (`qilowoq/bge-reranker-v2-m3-en-ru`) уменьшает веса с 2271 до 1500 MB, но inference speedup равен только 1.02× (95% bootstrap CI [0.996×; 1.044×]). На 10 контрольных кейсах Spearman 0.9999, chunk top-10 overlap 1.000.
