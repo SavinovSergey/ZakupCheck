@@ -3,11 +3,15 @@
 from index.fusion import (
     article_diversify,
     article_then_points,
+    dense_quota_article_fusion,
     gold_id_status,
     interleave,
     is_pointer_text,
+    project_article_ranking,
     rrf,
+    select_article_evidence,
     top_articles,
+    weighted_article_rrf,
     weighted_rrf,
 )
 from schemas.corpus import Chunk
@@ -95,3 +99,59 @@ def test_article_diversify_keeps_one_representative_per_article() -> None:
     ]
     diversified = article_diversify(ranked, pool=4, limit=3)
     assert [chunk.chunk_id for chunk in diversified] == ["33-a", "42", "48"]
+
+
+def test_project_article_ranking_collapses_repeated_chunks() -> None:
+    ranked = [
+        _chunk("33-a", ART_33),
+        _chunk("33-b", ART_33),
+        _chunk("42", ART_42),
+    ]
+    assert project_article_ranking(ranked, pool=3) == ["art.33", "art.42"]
+
+
+def test_weighted_article_rrf_merges_different_chunk_ids() -> None:
+    dense = [_chunk("dense-33-a", ART_33), _chunk("dense-33-b", ART_33), _chunk("dense-42", ART_42)]
+    bm25 = [_chunk("bm25-42", ART_42), _chunk("bm25-48", ART_48)]
+    fused = weighted_article_rrf([dense, bm25], weights=[1.0, 1.0], k=60, pool=3, limit=3)
+    assert fused == ["art.42", "art.33", "art.48"]
+
+
+def test_select_article_evidence_guarantees_representatives_then_fills_slots() -> None:
+    ranked = [
+        _chunk("33-a", ART_33),
+        _chunk("33-b", ART_33),
+        _chunk("48-a", ART_48),
+        _chunk("42-a", ART_42),
+        _chunk("48-b", ART_48),
+    ]
+    selected = select_article_evidence(
+        ranked,
+        ["art.48", "art.33", "art.42"],
+        n_articles=2,
+        limit=4,
+    )
+    assert [chunk.chunk_id for chunk in selected] == ["48-a", "33-a", "33-b", "48-b"]
+
+
+def test_dense_quota_article_fusion_protects_dense_and_adds_bm25() -> None:
+    dense = [
+        _chunk("dense-33", ART_33),
+        _chunk("dense-42", ART_42),
+        _chunk("dense-48", ART_48),
+    ]
+    bm25 = [
+        _chunk("bm25-48", ART_48),
+        _chunk("bm25-42", ART_42),
+    ]
+    fused = dense_quota_article_fusion(
+        dense,
+        bm25,
+        dense_keep=1,
+        weights=(1.0, 2.0),
+        k=30,
+        pool=3,
+        limit=3,
+    )
+    assert fused[0] == "art.33"
+    assert fused[1:] == ["art.48", "art.42"]
