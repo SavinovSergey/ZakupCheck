@@ -485,6 +485,30 @@ def _report(state: dict[str, Any], report_path: Path) -> None:
         "| \u043c\u0435\u0442\u043e\u0434 | R@10 exact | all@10 exact | R@10 art | all@10 art | ms/query* |",
         "|---|---:|---:|---:|---:|---:|",
     ]
+    if "law_corpus_audit" in state:
+        audit = state["law_corpus_audit"]
+        stale = audit["stale_dense_caches"]
+        cache_status = (
+            f"**Важно:** {stale} существующих dense-кэшей относятся к предыдущей версии "
+            "чанков. Dense, hybrid и cross-encoder результаты ниже являются историческими "
+            "до пересчёта эмбеддингов. Отдельные BM25-отчёты уже пересчитаны; смешанная "
+            "таблица error analysis ниже также остаётся исторической до полного перезапуска."
+            if stale
+            else "Все 34 базовых dense-кэша и отдельный title-prefix кэш обновлены для "
+            "текущего корпуса; приведённые ниже dense, hybrid и cross-encoder эксперименты "
+            "повторены после обновления."
+        )
+        lines[4:4] = [
+            "",
+            "## Покрытие корпуса",
+            "",
+            f"После исправления парсинга: {len(audit['active_articles'])} действующих статей, "
+            f"{len(audit['repealed_articles'])} полностью утративших силу, "
+            f"{len(audit['empty_articles'])} пустых; каждый структурный корпус покрывает "
+            f"{len(audit['active_articles'])} из {len(audit['active_articles'])} действующих статей. "
+            f"Полный аудит: `{audit['report']}`.",
+            cache_status,
+        ]
     for item in sorted(dev["methods"], key=lambda row: (-row["metrics"]["recall_article"], row["name"])):
         metrics = item["metrics"]
         lines.append(
@@ -617,29 +641,210 @@ def _report(state: dict[str, Any], report_path: Path) -> None:
     lines.extend(
         [
             "",
-            "## \u0412\u044b\u0432\u043e\u0434 \u043f\u043e \u0441\u0440\u0430\u0432\u043d\u0435\u043d\u0438\u044e retriever-\u043e\u0432 \u0438 \u043f\u043b\u0430\u043d \u0433\u0438\u0431\u0440\u0438\u0434\u0430",
+            "## Архитектура article-level гибрида",
             "",
             "**\u0414\u043b\u044f dense \u043d\u0443\u0436\u043d\u043e \u0437\u0430\u0444\u0438\u043a\u0441\u0438\u0440\u043e\u0432\u0430\u0442\u044c `Roflmax/bge-m3-russian-legal`, `max_chunk=700`.** "
             "\u042d\u0442\u043e \u043b\u0443\u0447\u0448\u0430\u044f dense-\u043a\u043e\u043d\u0444\u0438\u0433\u0443\u0440\u0430\u0446\u0438\u044f \u043f\u043e\u0441\u043b\u0435 \u043e\u0434\u0438\u043d\u0430\u043a\u043e\u0432\u043e\u0439 \u0434\u0438\u0432\u0435\u0440\u0441\u0438\u0444\u0438\u043a\u0430\u0446\u0438\u0438 \u0432\u0441\u0435\u0445 \u044d\u043c\u0431\u0435\u0434\u0434\u0435\u0440\u043e\u0432 \u0438 \u0440\u0430\u0437\u043c\u0435\u0440\u043e\u0432.",
             "",
-            "**\u0414\u043b\u044f BM25 \u0432 \u0433\u0438\u0431\u0440\u0438\u0434\u0435 \u043d\u0443\u0436\u043d\u043e \u043f\u0440\u043e\u0432\u0435\u0440\u0438\u0442\u044c \u0438 m1500, \u0438 m2500.** "
+            "**В эксперимент гибрида включены BM25 m1500 и m2500.** "
             "m1500 \u0434\u0430\u043b \u043c\u0430\u043a\u0441\u0438\u043c\u0430\u043b\u044c\u043d\u044b\u0439 dev article R@10 (0.567), \u0430 m2500 \u0431\u044b\u043b \u0437\u0430\u0444\u0438\u043a\u0441\u0438\u0440\u043e\u0432\u0430\u043d \u043f\u043e \u043e\u0431\u0449\u0438\u043c tie-breakers \u0437\u0430 \u0431\u043e\u043b\u0435\u0435 \u0432\u044b\u0441\u043e\u043a\u0438\u0439 exact R@10. "
             "\u0415\u0434\u0438\u043d\u043e\u043b\u0438\u0447\u043d\u044b\u0439 \u043f\u043e\u0431\u0435\u0434\u0438\u0442\u0435\u043b\u044c \u043d\u0435 \u043e\u0431\u044f\u0437\u0430\u043d \u0431\u044b\u0442\u044c \u043b\u0443\u0447\u0448\u0438\u043c \u043a\u043e\u043c\u043f\u043e\u043d\u0435\u043d\u0442\u043e\u043c \u0433\u0438\u0431\u0440\u0438\u0434\u0430.",
             "",
             "\u0413\u0438\u0431\u0440\u0438\u0434 \u043d\u0435 \u0434\u043e\u043b\u0436\u0435\u043d \u0442\u0440\u0435\u0431\u043e\u0432\u0430\u0442\u044c \u043e\u0434\u0438\u043d\u0430\u043a\u043e\u0432\u043e\u0433\u043e \u0447\u0430\u043d\u043a\u0438\u043d\u0433\u0430. \u0427\u0430\u043d\u043a\u0438 m700, m1500 \u0438 m2500 \u043d\u0435 \u0438\u043c\u0435\u044e\u0442 \u043e\u0431\u0449\u0438\u0445 `chunk_id`, \u043f\u043e\u044d\u0442\u043e\u043c\u0443 \u043f\u0440\u044f\u043c\u043e\u0439 chunk-level RRF \u0438\u043b\u0438 interleave \u043d\u0435\u043a\u043e\u0440\u0440\u0435\u043a\u0442\u043d\u044b. "
             "\u041e\u0431\u0449\u0435\u0439 \u0435\u0434\u0438\u043d\u0438\u0446\u0435\u0439 fusion \u0434\u043e\u043b\u0436\u043d\u0430 \u0431\u044b\u0442\u044c \u0441\u0442\u0430\u0442\u044c\u044f.",
             "",
-            "\u041f\u0440\u0435\u0434\u043b\u0430\u0433\u0430\u0435\u043c\u0430\u044f \u0441\u0445\u0435\u043c\u0430:",
+            "Проверенная схема:",
             "",
             "1. Dense m700 \u0438 BM25 m1500/m2500 \u043d\u0435\u0437\u0430\u0432\u0438\u0441\u0438\u043c\u043e \u0432\u043e\u0437\u0432\u0440\u0430\u0449\u0430\u044e\u0442 top-50 \u0447\u0430\u043d\u043a\u043e\u0432.",
             "2. \u041a\u0430\u0436\u0434\u044b\u0439 \u0441\u043f\u0438\u0441\u043e\u043a \u043f\u0440\u043e\u0435\u0446\u0438\u0440\u0443\u0435\u0442\u0441\u044f \u0432 \u0440\u0430\u043d\u0433 \u0441\u0442\u0430\u0442\u0435\u0439 \u043f\u043e \u043b\u0443\u0447\u0448\u0435\u043c\u0443 \u0447\u0430\u043d\u043a\u0443 \u0441\u0442\u0430\u0442\u044c\u0438. \u041e\u0434\u043d\u0430 \u0441\u0438\u0441\u0442\u0435\u043c\u0430 \u0434\u0430\u0451\u0442 \u043d\u0435 \u0431\u043e\u043b\u0435\u0435 \u043e\u0434\u043d\u043e\u0433\u043e \u0432\u043a\u043b\u0430\u0434\u0430 \u043d\u0430 \u0441\u0442\u0430\u0442\u044c\u044e, \u0447\u0442\u043e\u0431\u044b m700 \u043d\u0435 \u043f\u043e\u043b\u0443\u0447\u0430\u043b \u043f\u0440\u0435\u0438\u043c\u0443\u0449\u0435\u0441\u0442\u0432\u043e \u0437\u0430 \u0441\u0447\u0451\u0442 \u0431\u043e\u043b\u044c\u0448\u0435\u0433\u043e \u0447\u0438\u0441\u043b\u0430 \u0447\u0430\u043d\u043a\u043e\u0432.",
-            "3. \u0420\u0430\u043d\u0433\u0438 \u0441\u0442\u0430\u0442\u0435\u0439 \u043e\u0431\u044a\u0435\u0434\u0438\u043d\u044f\u044e\u0442\u0441\u044f weighted RRF. \u041d\u0430 dev \u0434\u043e\u0441\u0442\u0430\u0442\u043e\u0447\u043d\u043e \u043f\u0440\u043e\u0432\u0435\u0440\u0438\u0442\u044c BM25 m1500/m2500 \u0438 \u0432\u0435\u0441\u0430 dense:BM25 `1:1`, `2:1`, `1:2` \u0441 \u0444\u0438\u043a\u0441\u0438\u0440\u043e\u0432\u0430\u043d\u043d\u044b\u043c \u043f\u0443\u043b\u043e\u043c 50.",
+            "3. Ранги статей объединяются weighted RRF. На dev проверены BM25 m1500/m2500 и веса dense:BM25 `1:1`, `2:1`, `1:2` с фиксированным пулом 50.",
             "4. \u041f\u043e\u0441\u043b\u0435 \u0432\u044b\u0431\u043e\u0440\u0430 top-\u0441\u0442\u0430\u0442\u0435\u0439 \u0444\u0438\u043d\u0430\u043b\u044c\u043d\u044b\u0435 \u0444\u0440\u0430\u0433\u043c\u0435\u043d\u0442\u044b \u0431\u0435\u0440\u0443\u0442\u0441\u044f \u0438\u0437 m700-\u043a\u043e\u0440\u043f\u0443\u0441\u0430: \u0447\u0430\u0441\u0442\u0438 \u0438 \u043f\u0443\u043d\u043a\u0442\u044b \u043f\u043e\u0432\u0442\u043e\u0440\u043d\u043e \u0440\u0430\u043d\u0436\u0438\u0440\u0443\u044e\u0442\u0441\u044f \u0441 \u0443\u0447\u0451\u0442\u043e\u043c article-score. BM25-\u0447\u0430\u043d\u043a m1500/m2500 \u0438\u0441\u043f\u043e\u043b\u044c\u0437\u0443\u0435\u0442\u0441\u044f \u043a\u0430\u043a \u0441\u0438\u0433\u043d\u0430\u043b \u0441\u0442\u0430\u0442\u044c\u0438, \u0430 \u043d\u0435 \u043a\u0430\u043a \u043e\u0431\u044f\u0437\u0430\u0442\u0435\u043b\u044c\u043d\u044b\u0439 \u0444\u0438\u043d\u0430\u043b\u044c\u043d\u044b\u0439 \u043a\u043e\u043d\u0442\u0435\u043a\u0441\u0442.",
-            "5. \u0412\u044b\u0431\u043e\u0440 \u0434\u0435\u043b\u0430\u0435\u0442\u0441\u044f \u043f\u043e dev/blind article R@10, \u0437\u0430\u0442\u0435\u043c exact R@10, all-hit article@10 \u0438 latency; \u043d\u0430 eval \u043e\u0434\u0438\u043d \u0440\u0430\u0437 \u043f\u0440\u043e\u0432\u0435\u0440\u044f\u044e\u0442\u0441\u044f baseline \u0438 \u0437\u0430\u0444\u0438\u043a\u0441\u0438\u0440\u043e\u0432\u0430\u043d\u043d\u044b\u0439 \u0433\u0438\u0431\u0440\u0438\u0434.",
+            "5. Выбор сделан по dev/blind article R@10, затем exact R@10, all-hit article@10 и latency; на eval проверены baseline и зафиксированный гибрид.",
             "",
             "\u0422\u0430\u043a\u0430\u044f \u0441\u0445\u0435\u043c\u0430 \u0440\u0430\u0437\u0434\u0435\u043b\u044f\u0435\u0442 \u0434\u0432\u0435 \u0437\u0430\u0434\u0430\u0447\u0438: BM25 \u0434\u0430\u0451\u0442 \u0448\u0438\u0440\u043e\u043a\u043e\u0435 \u043b\u0435\u043a\u0441\u0438\u0447\u0435\u0441\u043a\u043e\u0435 \u043f\u043e\u043a\u0440\u044b\u0442\u0438\u0435 \u0441\u0442\u0430\u0442\u0435\u0439, \u0430 dense m700 \u2014 \u0431\u043e\u043b\u0435\u0435 \u0442\u043e\u0447\u043d\u044b\u0435 \u0444\u0440\u0430\u0433\u043c\u0435\u043d\u0442\u044b \u0434\u043b\u044f \u0444\u0438\u043d\u0430\u043b\u044c\u043d\u043e\u0433\u043e \u043e\u0442\u0432\u0435\u0442\u0430.",
         ]
     )
+    if "article_hybrid" in state:
+        hybrid = state["article_hybrid"]
+        hybrid_dev = hybrid["dev"]
+        hybrid_winner = hybrid_dev["winner"]
+        hybrid_spec = hybrid_winner["spec"]
+        hybrid_interval = hybrid_dev["bootstrap_vs_dense"]
+        dense_baseline = hybrid_dev["baselines"]["dense m700 article-diverse"]["at10"]
+        lines.extend(
+            [
+                "",
+                "## Результат article-level гибрида",
+                "",
+                f"На dev / blind выбран BM25 m{hybrid_spec['bm25_max_chunk']}, `k={hybrid_spec['k']}`, "
+                f"веса dense:BM25 `{int(hybrid_spec['dense_weight'])}:{int(hybrid_spec['bm25_weight'])}`, "
+                f"{hybrid_spec['n_articles']} статей: article R@10 {dense_baseline['recall_article']:.3f}→"
+                f"{hybrid_winner['at10']['recall_article']:.3f}, exact R@10 {dense_baseline['recall_exact']:.3f}→"
+                f"{hybrid_winner['at10']['recall_exact']:.3f}. Разница article "
+                f"{hybrid_interval['mean_delta']:+.3f} (95% CI [{hybrid_interval['low']:+.3f}; "
+                f"{hybrid_interval['high']:+.3f}]).",
+                f"Полный протокол и сетка: `{hybrid['report']}`.",
+            ]
+        )
+        if "eval" in hybrid:
+            hybrid_eval = hybrid["eval"]
+            eval_dense = hybrid_eval["methods"]["dense m700 article-diverse"]["at10"]
+            eval_hybrid = hybrid_eval["methods"]["locked article-level hybrid"]["at10"]
+            eval_interval = hybrid_eval["bootstrap_vs_dense"]
+            lines.extend(
+                [
+                    "",
+                    f"На eval / blind выигрыш не перенёсся: article R@10 "
+                    f"{eval_dense['recall_article']:.3f}→{eval_hybrid['recall_article']:.3f}, exact R@10 "
+                    f"{eval_dense['recall_exact']:.3f}→{eval_hybrid['recall_exact']:.3f}; разница article "
+                    f"{eval_interval['mean_delta']:+.3f} (95% CI [{eval_interval['low']:+.3f}; "
+                    f"{eval_interval['high']:+.3f}]).",
+                    "**Рекомендация:** оставить dense m700 article-diverse основным retriever. "
+                    "Текущий article-level RRF считать отклонённой гипотезой, а BM25 использовать как отдельный резервный канал или позже обучать fusion на большем dev-наборе.",
+                ]
+            )
+    if "conservative_hybrid" in state and "cross_encoder" in state:
+        conservative = state["conservative_hybrid"]
+        cross_encoder = state["cross_encoder"]
+        dense = cross_encoder["dev"]["baseline"]["at10"]
+        conservative_dev = conservative["dev"]["winner"]["at10"]
+        cross_dev = cross_encoder["dev"]["winner"]["at10"]
+        interval = cross_encoder["dev"]["bootstrap_vs_dense"]
+        lines.extend(
+            [
+                "",
+                "## Консервативный гибрид и cross-encoder",
+                "",
+                "Консервативная схема сохраняет первые 8 dense-статей, а BM25 m1500 "
+                "заполняет оставшиеся позиции. Внутри выбранных статей сравниваются chunk-level "
+                "RRF и `BAAI/bge-reranker-v2-m3` по m700-чанкам.",
+                f"На dev / blind dense → conservative → cross-encoder: article R@10 "
+                f"{dense['recall_article']:.3f}→{conservative_dev['recall_article']:.3f}→"
+                f"{cross_dev['recall_article']:.3f}; exact R@10 "
+                f"{dense['recall_exact']:.3f}→{conservative_dev['recall_exact']:.3f}→"
+                f"{cross_dev['recall_exact']:.3f}. Article-разница к dense "
+                f"{interval['mean_delta']:+.3f} (95% CI [{interval['low']:+.3f}; "
+                f"{interval['high']:+.3f}]).",
+                "Article-выигрыш целиком даёт выбор статей; cross-encoder "
+                "улучшает только exact-выбор чанка внутри статьи. Полные отчёты: "
+                f"`{conservative['report']}` и `{cross_encoder['report']}`.",
+            ]
+        )
+        if "eval_posthoc" in cross_encoder:
+            eval_dense = cross_encoder["eval_posthoc"]["methods"][
+                "dense m700 article-diverse"
+            ]["at10"]
+            eval_conservative = cross_encoder["eval_posthoc"]["methods"][
+                "locked conservative hybrid"
+            ]["at10"]
+            eval_cross = cross_encoder["eval_posthoc"]["methods"][
+                "locked cross-encoder rerank"
+            ]["at10"]
+            eval_interval = cross_encoder["eval_posthoc"]["bootstrap_vs_dense"]
+            lines.extend(
+                [
+                    "",
+                    "Post-hoc eval не подтвердил перенос: dense → conservative → cross-encoder "
+                    f"по article R@10 {eval_dense['recall_article']:.3f}→"
+                    f"{eval_conservative['recall_article']:.3f}→{eval_cross['recall_article']:.3f}, "
+                    f"по exact R@10 {eval_dense['recall_exact']:.3f}→"
+                    f"{eval_conservative['recall_exact']:.3f}→{eval_cross['recall_exact']:.3f}; "
+                    f"article-разница {eval_interval['mean_delta']:+.3f} "
+                    f"(95% CI [{eval_interval['low']:+.3f}; {eval_interval['high']:+.3f}]).",
+                    "**Рекомендация:** оставить dense m700 article-diverse production baseline. "
+                    "Консервативный hybrid считать перспективной, но пока не подтверждённой гипотезой; "
+                    "текущий cross-encoder не внедрять: post-hoc выигрыша нет, а CPU-latency около 22 секунд на запрос.",
+                ]
+            )
+    if "wide_article_rerank" in state:
+        wide = state["wide_article_rerank"]
+        wide_dev = wide["dev"]
+        wide_winner = wide_dev["winner"]
+        wide_spec = wide_winner["spec"]
+        wide_interval = wide_dev["bootstrap_vs_dense"]
+        wide_dense = wide_dev["baseline"]["at10"]
+        lines.extend(
+            [
+                "",
+                "## Wide article-first cross-encoder",
+                "",
+                f"Dense m700 и BM25 m1500 сначала возвращают по 50 уникальных статей. "
+                f"На dev выбраны квоты dense={wide_spec['dense_articles']} и "
+                f"BM25={wide_spec['bm25_articles']}, затем `{wide['model']}` ранжирует до "
+                f"{wide_spec['chunks_per_article']} m700-чанков на статью и оставляет один лучший.",
+                f"На dev / blind article R@10 {wide_dense['recall_article']:.3f}→"
+                f"{wide_winner['at10']['recall_article']:.3f}, exact R@10 "
+                f"{wide_dense['recall_exact']:.3f}→{wide_winner['at10']['recall_exact']:.3f}; "
+                f"Δ article {wide_interval['mean_delta']:+.3f} (95% CI "
+                f"[{wide_interval['low']:+.3f}; {wide_interval['high']:+.3f}]).",
+            ]
+        )
+        if "eval" in wide:
+            wide_eval = wide["eval"]
+            eval_dense = wide_eval["methods"]["dense m700 article-diverse"]["at10"]
+            eval_wide = wide_eval["methods"]["locked wide cross-encoder"]["at10"]
+            eval_interval = wide_eval["bootstrap_vs_dense"]
+            lines.extend(
+                [
+                    f"На eval / blind article R@10 {eval_dense['recall_article']:.3f}→"
+                    f"{eval_wide['recall_article']:.3f}, exact R@10 "
+                    f"{eval_dense['recall_exact']:.3f}→{eval_wide['recall_exact']:.3f}; "
+                    f"Δ article {eval_interval['mean_delta']:+.3f} (95% CI "
+                    f"[{eval_interval['low']:+.3f}; {eval_interval['high']:+.3f}]).",
+                    "**Рекомендация:** не заменять dense article-diverse этим вариантом: "
+                    "article-выигрыш dev не перенёсся на eval. Схема полезна как evidence-reranker "
+                    f"из-за роста exact и all-hit на eval, но CPU-latency около "
+                    f"{wide_eval['cross_encoder_latency_ms'] / 1000:.1f} s/query слишком высока для "
+                    "production без более узкого candidate generator или дистилляции.",
+                    f"Полный отчёт: `{wide['report']}`.",
+                ]
+            )
+    if "reranker_runtime_comparison" in state:
+        runtime = state["reranker_runtime_comparison"]
+        by_name = {row["runtime"]: row for row in runtime["rows"]}
+        int8 = by_name["onnx-int8"]
+        gguf = by_name["gguf-q8"]
+        onnx_fp32 = by_name["onnx-fp32"]
+        pytorch_en_ru = by_name.get("pytorch-fp32-en-ru")
+        lines.extend(
+            [
+                "",
+                "## CPU runtime и квантование cross-encoder",
+                "",
+                *(
+                    [
+                        f"Truncated PyTorch FP32 (`qilowoq/bge-reranker-v2-m3-en-ru`) уменьшает "
+                        f"веса с {by_name['pytorch-fp32']['model_mb']:.0f} до "
+                        f"{pytorch_en_ru['model_mb']:.0f} MB, но inference speedup равен только "
+                        f"{pytorch_en_ru['speedup_vs_pytorch']:.2f}× (95% bootstrap CI "
+                        f"[{pytorch_en_ru['paired_latency']['low']:.3f}×; "
+                        f"{pytorch_en_ru['paired_latency']['high']:.3f}×]). На 10 контрольных "
+                        f"кейсах Spearman {pytorch_en_ru['quality']['mean_spearman']:.4f}, "
+                        f"chunk top-10 overlap "
+                        f"{pytorch_en_ru['quality']['mean_chunk_top10_overlap']:.3f}.",
+                    ]
+                    if pytorch_en_ru is not None
+                    else []
+                ),
+                f"Bilingual ONNX FP32 на {onnx_fp32['quality']['n']} контрольных кейсах практически "
+                f"эквивалентен PyTorch FP32: Spearman {onnx_fp32['quality']['mean_spearman']:.4f}, "
+                f"chunk top-10 overlap {onnx_fp32['quality']['mean_chunk_top10_overlap']:.3f}, "
+                "но на CPU оказался медленнее.",
+                f"ONNX INT8 ускоряет reranking в {int8['speedup_vs_pytorch']:.2f}×, однако chunk "
+                f"top-10 overlap равен {int8['quality']['mean_chunk_top10_overlap']:.3f}, article top-5 "
+                f"overlap {int8['quality']['mean_article_top5_overlap']:.3f}, а Δ article R@5 "
+                f"{int8['quality']['article_r5_bootstrap']['mean_delta']:+.3f}.",
+                f"GGUF Q8_0 ускоряет в {gguf['speedup_vs_pytorch']:.2f}× и снижает peak RSS до "
+                f"{gguf['peak_rss_mb']:.0f} MB, но fidelity ещё ниже: chunk overlap "
+                f"{gguf['quality']['mean_chunk_top10_overlap']:.3f}, article overlap "
+                f"{gguf['quality']['mean_article_top5_overlap']:.3f}, Δ article R@5 "
+                f"{gguf['quality']['article_r5_bootstrap']['mean_delta']:+.3f}.",
+                "**Вывод:** truncated PyTorch полезен меньшим артефактом и cold start, но почти не "
+                "ускоряет длинный reranking; перед production-заменой нужен полный 52-case fidelity-run. "
+                "INT8 и GGUF Q8_0 не считать эквивалентной заменой; использовать их можно только "
+                f"как явный quality–speed trade-off. Полный отчёт: `{runtime['report']}`.",
+            ]
+        )
     if "eval" in state:
         lines.extend(["", "## \u041e\u0434\u043d\u043e\u043a\u0440\u0430\u0442\u043d\u0430\u044f \u043f\u0440\u043e\u0432\u0435\u0440\u043a\u0430 eval", "", "| \u043c\u0435\u0442\u043e\u0434 | R@10 exact | all@10 exact | R@10 art | all@10 art |", "|---|---:|---:|---:|---:|"])
         for item in state["eval"]["methods"]:
@@ -673,6 +878,23 @@ def _report(state: dict[str, Any], report_path: Path) -> None:
                         f"| {label} | {metrics['recall_exact']:.3f} | {metrics['all_exact']:.3f} "
                         f"| {metrics['recall_article']:.3f} | {metrics['all_article']:.3f} |"
                     )
+        hybrid_screen = state.get("article_hybrid")
+        if hybrid_screen is not None and "eval" in hybrid_screen:
+            hybrid_metrics = hybrid_screen["eval"]["methods"]["locked article-level hybrid"]["at10"]
+            lines.append(
+                f"| locked article-level hybrid | {hybrid_metrics['recall_exact']:.3f} "
+                f"| {hybrid_metrics['all_exact']:.3f} | {hybrid_metrics['recall_article']:.3f} "
+                f"| {hybrid_metrics['all_article']:.3f} |"
+            )
+        cross_screen = state.get("cross_encoder")
+        if cross_screen is not None and "eval_posthoc" in cross_screen:
+            for label in ("locked conservative hybrid", "locked cross-encoder rerank"):
+                metrics = cross_screen["eval_posthoc"]["methods"][label]["at10"]
+                lines.append(
+                    f"| {label} (post-hoc) | {metrics['recall_exact']:.3f} "
+                    f"| {metrics['all_exact']:.3f} | {metrics['recall_article']:.3f} "
+                    f"| {metrics['all_article']:.3f} |"
+                )
         eval_outcomes = state["eval"]["outcomes"]
         interval = state["eval"]["bootstrap"]
         lines.extend(
