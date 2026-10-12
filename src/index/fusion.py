@@ -60,6 +60,139 @@ def weighted_rrf(
     return [chosen[chunk_id] for chunk_id in ordered[:limit]]
 
 
+def project_article_ranking(ranked: Sequence[Chunk], *, pool: int = 50) -> list[str]:
+    """Collapse a chunk ranking into first-seen articles.
+
+    The returned ranks are dense: repeated chunks from one article consume only
+    one position.  Articles inside a multi-article chunk are ordered by their
+    canonical id so the projection is deterministic.
+    """
+    if pool < 0:
+        raise ValueError("pool must be non-negative")
+    articles: list[str] = []
+    seen: set[str] = set()
+    for chunk in ranked[:pool]:
+        for article in sorted({article_key(norm_id) for norm_id in chunk.norm_ids}):
+            if article in seen:
+                continue
+            seen.add(article)
+            articles.append(article)
+    return articles
+
+
+def weighted_article_rrf(
+    rankings: Sequence[Sequence[Chunk]],
+    *,
+    weights: Sequence[float],
+    k: int = RRF_K,
+    pool: int = 50,
+    limit: int = 10,
+) -> list[str]:
+    """Weighted RRF after projecting incompatible chunkings to articles.
+
+    Each source contributes at most once per article, so a corpus with smaller
+    chunks cannot dominate merely by returning more chunks from the same
+    article.  Ties break by the best source rank and then canonical article id.
+    """
+    if len(rankings) != len(weights):
+        raise ValueError("rankings and weights must have the same length")
+    if k < 0 or pool < 0 or limit < 0:
+        raise ValueError("k, pool, and limit must be non-negative")
+    if any(weight < 0 for weight in weights):
+        raise ValueError("weights must be non-negative")
+    scores: dict[str, float] = {}
+    best_rank: dict[str, int] = {}
+    for ranking, weight in zip(rankings, weights, strict=True):
+        for rank, article in enumerate(project_article_ranking(ranking, pool=pool), start=1):
+            scores[article] = scores.get(article, 0.0) + weight / (k + rank)
+            best_rank[article] = min(best_rank.get(article, rank), rank)
+    return sorted(scores, key=lambda article: (-scores[article], best_rank[article], article))[:limit]
+
+
+def dense_quota_article_fusion(
+    dense: Sequence[Chunk],
+    bm25: Sequence[Chunk],
+    *,
+    dense_keep: int,
+    weights: Sequence[float] = (1.0, 1.0),
+    k: int = RRF_K,
+    pool: int = 50,
+    limit: int = 10,
+) -> list[str]:
+    """Preserve a dense article prefix, then fill remaining slots by RRF.
+
+    This is a conservative alternative to replacing the full dense ranking:
+    BM25 can add or promote candidates only outside the protected prefix.
+    """
+    if dense_keep < 0 or dense_keep > limit:
+        raise ValueError("dense_keep must be between zero and limit")
+    dense_articles = project_article_ranking(dense, pool=pool)
+    fused = weighted_article_rrf(
+        [dense, bm25],
+        weights=weights,
+        k=k,
+        pool=pool,
+        limit=pool * 2,
+    )
+    picked = dense_articles[:dense_keep]
+    seen = set(picked)
+    for article in fused:
+        if article in seen:
+            continue
+        picked.append(article)
+        seen.add(article)
+        if len(picked) == limit:
+            break
+    return picked
+
+
+def select_article_evidence(
+    evidence_ranking: Sequence[Chunk],
+    article_ranking: Sequence[str],
+    *,
+    n_articles: int,
+    limit: int = 10,
+) -> list[Chunk]:
+    """Return evidence chunks for fused articles from one canonical corpus.
+
+    The best chunk of every selected article is emitted first in fused article
+    order.  Remaining slots are filled in the evidence ranking's original
+    order.  This preserves article coverage while allowing extra parts or
+    points when fewer than ``limit`` articles are selected.
+    """
+    if n_articles < 0 or limit < 0:
+        raise ValueError("n_articles and limit must be non-negative")
+    selected = list(dict.fromkeys(article_ranking[:n_articles]))
+    selected_set = set(selected)
+    best_by_article: dict[str, Chunk] = {}
+    for chunk in evidence_ranking:
+        for article in {article_key(norm_id) for norm_id in chunk.norm_ids} & selected_set:
+            best_by_article.setdefault(article, chunk)
+
+    picked: list[Chunk] = []
+    seen_chunks: set[str] = set()
+    for article in selected:
+        chunk = best_by_article.get(article)
+        if chunk is None or chunk.chunk_id in seen_chunks:
+            continue
+        picked.append(chunk)
+        seen_chunks.add(chunk.chunk_id)
+        if len(picked) == limit:
+            return picked
+
+    for chunk in evidence_ranking:
+        if chunk.chunk_id in seen_chunks:
+            continue
+        articles = {article_key(norm_id) for norm_id in chunk.norm_ids}
+        if not articles & selected_set:
+            continue
+        picked.append(chunk)
+        seen_chunks.add(chunk.chunk_id)
+        if len(picked) == limit:
+            break
+    return picked
+
+
 def interleave(
     rankings: Sequence[Sequence[Chunk]],
     *,
