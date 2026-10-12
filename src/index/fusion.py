@@ -109,6 +109,113 @@ def weighted_article_rrf(
     return sorted(scores, key=lambda article: (-scores[article], best_rank[article], article))[:limit]
 
 
+def fuse_article_rankings(
+    rankings: Sequence[Sequence[str]],
+    *,
+    candidates: Sequence[str],
+    weights: Sequence[float],
+    k: int = RRF_K,
+    limit: int = 10,
+) -> list[str]:
+    """Weighted RRF for already projected article rankings.
+
+    Source positions are preserved even when only a subset of articles is
+    eligible.  This matters when a candidate union contains different prefix
+    lengths from dense and BM25.
+    """
+    if len(rankings) != len(weights):
+        raise ValueError("rankings and weights must have the same length")
+    if k < 0 or limit < 0:
+        raise ValueError("k and limit must be non-negative")
+    if any(weight < 0 for weight in weights):
+        raise ValueError("weights must be non-negative")
+    eligible = set(candidates)
+    scores = {article: 0.0 for article in dict.fromkeys(candidates)}
+    best_rank = {article: len(eligible) + 1 for article in eligible}
+    for ranking, weight in zip(rankings, weights, strict=True):
+        for rank, article in enumerate(ranking, start=1):
+            if article not in eligible:
+                continue
+            scores[article] += weight / (k + rank)
+            best_rank[article] = min(best_rank[article], rank)
+    return sorted(scores, key=lambda article: (-scores[article], best_rank[article], article))[
+        :limit
+    ]
+
+
+def protected_article_shortlist(
+    dense_articles: Sequence[str],
+    bm25_articles: Sequence[str],
+    fallback_articles: Sequence[str],
+    *,
+    candidates: Sequence[str],
+    dense_keep: int,
+    bm25_keep: int,
+    limit: int,
+) -> list[str]:
+    """Protect source prefixes, then fill the shortlist from another ranking."""
+    if min(dense_keep, bm25_keep, limit) < 0:
+        raise ValueError("limits must be non-negative")
+    if dense_keep + bm25_keep > limit:
+        raise ValueError("protected quotas must fit inside limit")
+    eligible = set(candidates)
+    output: list[str] = []
+    seen: set[str] = set()
+
+    def append_from(ranking: Sequence[str], count: int | None) -> None:
+        if count == 0:
+            return
+        added = 0
+        for article in ranking:
+            if article not in eligible or article in seen:
+                continue
+            output.append(article)
+            seen.add(article)
+            added += 1
+            if len(output) == limit or (count is not None and added == count):
+                return
+
+    append_from(dense_articles, dense_keep)
+    append_from(bm25_articles, bm25_keep)
+    append_from(fallback_articles, None)
+    return output
+
+
+def rank_articles_with_retrieval_bonus(
+    ce_scores: dict[str, float],
+    dense_articles: Sequence[str],
+    bm25_articles: Sequence[str],
+    *,
+    candidates: Sequence[str],
+    alpha: float,
+    k: int = 10,
+    limit: int = 10,
+) -> list[str]:
+    """Add a normalized dense/BM25 reciprocal-rank prior to raw CE scores."""
+    if alpha < 0 or k < 0 or limit < 0:
+        raise ValueError("alpha, k, and limit must be non-negative")
+    eligible = set(candidates)
+    prior = {article: 0.0 for article in dict.fromkeys(candidates)}
+    best_rank = {article: len(eligible) + 1 for article in eligible}
+    for ranking in (dense_articles, bm25_articles):
+        for rank, article in enumerate(ranking, start=1):
+            if article not in eligible:
+                continue
+            prior[article] += 1.0 / (k + rank)
+            best_rank[article] = min(best_rank[article], rank)
+    scale = max(prior.values(), default=0.0)
+    if scale:
+        prior = {article: value / scale for article, value in prior.items()}
+    combined = {
+        article: ce_scores.get(article, float("-inf")) + alpha * prior[article]
+        for article in prior
+    }
+    return sorted(
+        combined,
+        key=lambda article: (-combined[article], best_rank[article], article),
+    )[:limit]
+
+
 def dense_quota_article_fusion(
     dense: Sequence[Chunk],
     bm25: Sequence[Chunk],

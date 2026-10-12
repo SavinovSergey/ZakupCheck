@@ -4,10 +4,13 @@ from index.fusion import (
     article_diversify,
     article_then_points,
     dense_quota_article_fusion,
+    fuse_article_rankings,
     gold_id_status,
     interleave,
     is_pointer_text,
     project_article_ranking,
+    protected_article_shortlist,
+    rank_articles_with_retrieval_bonus,
     rrf,
     select_article_evidence,
     top_articles,
@@ -155,3 +158,48 @@ def test_dense_quota_article_fusion_protects_dense_and_adds_bm25() -> None:
     )
     assert fused[0] == "art.33"
     assert fused[1:] == ["art.48", "art.42"]
+
+
+def test_fuse_article_rankings_preserves_original_source_positions() -> None:
+    fused = fuse_article_rankings(
+        [["a", "outside", "b"], ["b", "a"]],
+        candidates=["a", "b"],
+        weights=[1.0, 1.0],
+        k=0,
+        limit=2,
+    )
+    assert fused == ["a", "b"]
+
+
+def test_protected_article_shortlist_keeps_sources_then_fills() -> None:
+    shortlist = protected_article_shortlist(
+        ["dense", "shared", "other"],
+        ["bm25", "shared", "other"],
+        ["other", "shared", "dense", "bm25"],
+        candidates=["dense", "bm25", "shared", "other"],
+        dense_keep=1,
+        bm25_keep=1,
+        limit=4,
+    )
+    assert shortlist == ["dense", "bm25", "other", "shared"]
+
+
+def test_retrieval_bonus_can_promote_a_source_favorite() -> None:
+    no_bonus = rank_articles_with_retrieval_bonus(
+        {"dense": 0.4, "ce": 0.5},
+        ["dense", "ce"],
+        ["dense", "ce"],
+        candidates=["dense", "ce"],
+        alpha=0.0,
+        limit=2,
+    )
+    with_bonus = rank_articles_with_retrieval_bonus(
+        {"dense": 0.4, "ce": 0.5},
+        ["dense", "ce"],
+        ["dense", "ce"],
+        candidates=["dense", "ce"],
+        alpha=2.0,
+        limit=2,
+    )
+    assert no_bonus == ["ce", "dense"]
+    assert with_bonus == ["dense", "ce"]
