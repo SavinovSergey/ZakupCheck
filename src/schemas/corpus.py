@@ -31,12 +31,13 @@ class NormUnit(BaseModel):
     char_end: int
     order: int
     is_retrieval_unit: bool = False
+    is_repealed: bool = False
 
 
 class Chunk(BaseModel):
     chunk_id: str
     edition_id: str
-    chunking: Literal["part", "point", "window"]
+    chunking: Literal["article", "part", "point", "window"]
     text: str
     char_start: int
     char_end: int

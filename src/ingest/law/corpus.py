@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import re
 import sys
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 from schemas.corpus import Chunk, NormUnit
@@ -15,6 +16,10 @@ PART_RE = re.compile(r"^(\d+)\.\s+(.*)$", re.S)
 POINT_RE = re.compile(r"^(\d+(?:\.\d+)?)\)\s+(.*)$", re.S)
 SUBPOINT_RE = re.compile(r"^([а-яёa-z])\)\s+(.*)$", re.S | re.I)
 ARTICLE_RE = re.compile(r"^Статья\s+(\d+(?:\.\d+)?)\.?\s*(.*)$")
+ARTICLE_REPEALED_RE = re.compile(
+    r"(?:^\(Статья\s+утратила\s+силу\b|\(Утратила\s+силу\s*-)",
+    re.I,
+)
 
 DEFAULT_MAX_CHUNK = 2000
 DEFAULT_WINDOW_OVERLAP = 200
@@ -90,6 +95,29 @@ class _Article:
     preamble: list[_Seg] = field(default_factory=list)
 
 
+def article_is_repealed(article: _Article) -> bool:
+    """True only for a whole-article repeal marker, not a repealed subclause."""
+    return not article.parts and any(
+        ARTICLE_REPEALED_RE.search(segment.text) for segment in article.preamble
+    )
+
+
+def article_repeal_note(article: _Article) -> str | None:
+    return next(
+        (
+            segment.text
+            for segment in article.preamble
+            if ARTICLE_REPEALED_RE.search(segment.text)
+        ),
+        None,
+    )
+
+
+def article_body(article: _Article) -> str:
+    """Unnumbered article body used when the law has no parts."""
+    return "\n".join(segment.text for segment in article.preamble).strip()
+
+
 def make_norm_id(edition_id: str, article: str, part: str | None = None, point: str | None = None) -> str:
     nid = f"44FZ:{edition_id}:art.{article}"
     if part is not None:
@@ -132,6 +160,13 @@ def parse_articles(blocks: list[dict]) -> list[_Article]:
             articles.append(cur)
             cur_part = None
             cur_point = None
+            continue
+
+        if kind == "chapter_title" and cur is not None and ARTICLE_REPEALED_RE.search(text):
+            # Backward-compatible recovery for blocks produced before the HTML
+            # classifier distinguished article status notes from headings.
+            finish_part()
+            cur.preamble.append(seg)
             continue
 
         if kind == "chapter_title":
@@ -185,6 +220,8 @@ def build_norm_units(edition_id: str, articles: list[_Article]) -> list[NormUnit
 
     for art in articles:
         art_id = make_norm_id(edition_id, art.number)
+        repealed = article_is_repealed(art)
+        article_retrieval_unit = not art.parts and bool(article_body(art)) and not repealed
         # текст статьи = заголовок + все части (для get_norm_text уровня article)
         body_parts: list[str] = [art.title_seg.text]
         starts = [art.title_seg.char_start]
@@ -211,7 +248,8 @@ def build_norm_units(edition_id: str, articles: list[_Article]) -> list[NormUnit
                 char_start=min(starts),
                 char_end=max(ends),
                 order=order,
-                is_retrieval_unit=False,
+                is_retrieval_unit=article_retrieval_unit,
+                is_repealed=repealed,
             )
         )
         order += 1
@@ -332,6 +370,22 @@ def build_structural_chunks(
         )
 
     for art in articles:
+        if not art.parts:
+            body = article_body(art)
+            if not body or article_is_repealed(art):
+                continue
+            art_id = make_norm_id(edition_id, art.number)
+            start = art.preamble[0].char_start
+            end = art.preamble[-1].char_end
+            if len(body) <= max_chunk:
+                add("article", body, start, end, [art_id], art.title)
+            else:
+                for w_start, w_end, w_text in sliding_windows(
+                    body, start, max_chunk, window_overlap
+                ):
+                    add("window", w_text, w_start, w_end, [art_id], art.title)
+            continue
+
         for part in art.parts:
             part_id = make_norm_id(edition_id, art.number, part.number)
             point_ids = [
@@ -384,6 +438,24 @@ def load_edition_dir(edition_dir: Path) -> tuple[dict, list[dict], str]:
     return edition, blocks, full_text
 
 
+def refresh_blocks_from_raw(edition_dir: Path) -> None:
+    """Reparse saved official HTML after parser fixes, without network access."""
+    from ingest.law.download import html_to_blocks
+
+    edition = json.loads((edition_dir / "edition.json").read_text(encoding="utf-8"))
+    source_html = (edition_dir / "raw" / "source.html").read_text(encoding="utf-8")
+    full_text, blocks = html_to_blocks(source_html)
+    digest = hashlib.sha256(full_text.encode("utf-8")).hexdigest()
+    if digest != edition.get("content_sha256"):
+        raise AssertionError(
+            f"reparsed source hash differs: expected {edition.get('content_sha256')}, got {digest}"
+        )
+    (edition_dir / "full_text.txt").write_text(full_text + "\n", encoding="utf-8")
+    with (edition_dir / "blocks.jsonl").open("w", encoding="utf-8") as handle:
+        for block in blocks:
+            handle.write(json.dumps(asdict(block), ensure_ascii=False) + "\n")
+
+
 def build_corpus(
     edition_dir: Path,
     *,
@@ -394,6 +466,9 @@ def build_corpus(
     edition_meta, blocks, full_text = load_edition_dir(edition_dir)
     edition_id = edition_meta["edition_id"]
     articles = parse_articles(blocks)
+    empty_articles = [art.number for art in articles if not art.parts and not article_body(art)]
+    if empty_articles:
+        raise AssertionError(f"articles without body or status: {empty_articles}")
     units = build_norm_units(edition_id, articles)
     chunks = build_structural_chunks(
         edition_id,
@@ -436,8 +511,18 @@ def build_corpus(
             "part": sum(1 for u in units if u.level == "part"),
             "point": sum(1 for u in units if u.level == "point"),
         },
+        "article_status": {
+            "active": sum(not article_is_repealed(art) for art in articles),
+            "repealed": sum(article_is_repealed(art) for art in articles),
+            "empty": len(empty_articles),
+            "active_article_only": sum(
+                not art.parts and bool(article_body(art)) and not article_is_repealed(art)
+                for art in articles
+            ),
+        },
         "chunks": len(chunks),
         "chunking": {
+            "article": sum(1 for c in chunks if c.chunking == "article"),
             "part": sum(1 for c in chunks if c.chunking == "part"),
             "point": sum(1 for c in chunks if c.chunking == "point"),
             "window": sum(1 for c in chunks if c.chunking == "window"),
@@ -449,6 +534,41 @@ def build_corpus(
     }
     (edition_dir / f"corpus_stats_m{max_chunk}.json").write_text(
         json.dumps(stats, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    chunk_article_ids = {
+        match.group(1)
+        for chunk in chunks
+        for norm_id in chunk.norm_ids
+        if (match := re.search(r":art\.([0-9]+(?:\.\d+)?)", norm_id))
+    }
+    audit = {
+        "edition_id": edition_id,
+        "source_url": edition_meta.get("source_url"),
+        "max_chunk": max_chunk,
+        "article_records": len(articles),
+        "active_articles": [art.number for art in articles if not article_is_repealed(art)],
+        "repealed_articles": [
+            {
+                "article": art.number,
+                "status_text": article_repeal_note(art),
+            }
+            for art in articles
+            if article_is_repealed(art)
+        ],
+        "empty_articles": empty_articles,
+        "active_article_only": [
+            art.number
+            for art in articles
+            if not art.parts and bool(article_body(art)) and not article_is_repealed(art)
+        ],
+        "retrieval_articles": sorted(
+            chunk_article_ids,
+            key=lambda value: tuple(int(part) for part in value.split(".")),
+        ),
+    }
+    (edition_dir / f"corpus_article_audit_m{max_chunk}.json").write_text(
+        json.dumps(audit, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
     )
     return stats
@@ -472,6 +592,11 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--window-overlap", type=int, default=DEFAULT_WINDOW_OVERLAP)
     parser.add_argument(
+        "--refresh-blocks-from-raw",
+        action="store_true",
+        help="Повторно разобрать сохранённый raw/source.html перед сборкой корпуса",
+    )
+    parser.add_argument(
         "--title-prefix",
         action="store_true",
         help='Добавить заголовок статьи в Chunk.text: "{title}.\\n{body}"',
@@ -481,6 +606,9 @@ def main(argv: list[str] | None = None) -> int:
     if not (args.edition_dir / "blocks.jsonl").exists():
         print(f"нет blocks.jsonl в {args.edition_dir}", file=sys.stderr)
         return 1
+
+    if args.refresh_blocks_from_raw:
+        refresh_blocks_from_raw(args.edition_dir)
 
     stats = build_corpus(
         args.edition_dir,

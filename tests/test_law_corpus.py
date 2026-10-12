@@ -138,6 +138,54 @@ def test_chunk_long_point_uses_windows() -> None:
     assert all(c.norm_ids == ["44FZ:ed:art.98:ch.1:p.1"] for c in chunks)
 
 
+def test_unnumbered_article_body_is_retrievable() -> None:
+    pairs = [
+        ("article_title", "Статья 6. Принцип"),
+        ("body", "Ненумерованное, но действующее содержание статьи."),
+    ]
+    articles = parse_articles(_blocks_from_pairs(pairs))
+    units = build_norm_units("ed", articles)
+    chunks = build_structural_chunks("ed", articles, max_chunk=700)
+    assert units[0].is_retrieval_unit is True
+    assert units[0].is_repealed is False
+    assert len(chunks) == 1
+    assert chunks[0].chunking == "article"
+    assert chunks[0].norm_ids == ["44FZ:ed:art.6"]
+
+
+def test_repeal_note_misclassified_as_heading_is_recovered_and_not_chunked() -> None:
+    pairs = [
+        ("article_title", "Статья 60."),
+        ("chapter_title", "(Статья утратила силу - Федеральный закон от 31.12.2017 № 504-ФЗ)"),
+        ("article_title", "Статья 61. Следующая"),
+        ("body", "1. Действующая часть."),
+    ]
+    articles = parse_articles(_blocks_from_pairs(pairs))
+    units = build_norm_units("ed", articles)
+    chunks = build_structural_chunks("ed", articles, max_chunk=700)
+    repealed = next(unit for unit in units if unit.article == "60")
+    assert repealed.is_repealed is True
+    assert "утратила силу" in repealed.text
+    assert not any("art.60" in norm_id for chunk in chunks for norm_id in chunk.norm_ids)
+
+
+def test_added_then_repealed_article_annotation_is_not_retrieved() -> None:
+    pairs = [
+        ("article_title", "Статья 54.1."),
+        (
+            "body",
+            "(Дополнение статьей - Федеральный закон от 31.12.2017 № 504-ФЗ) "
+            "(Утратила силу - Федеральный закон от 02.07.2021 № 360-ФЗ)",
+        ),
+    ]
+    articles = parse_articles(_blocks_from_pairs(pairs))
+    units = build_norm_units("ed", articles)
+    chunks = build_structural_chunks("ed", articles, max_chunk=700)
+    assert units[0].is_repealed is True
+    assert units[0].is_retrieval_unit is False
+    assert chunks == []
+
+
 def test_sliding_windows_overlap_and_bounds() -> None:
     text = " ".join(f"w{i}" for i in range(50))
     windows = sliding_windows(text, char_start=100, max_chunk=40, overlap=10)

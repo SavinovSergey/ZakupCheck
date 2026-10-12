@@ -62,3 +62,15 @@ def test_html_to_blocks_kinds_w9_and_offsets() -> None:
     assert "\n\n".join(b.text for b in blocks) == full_text
     assert any(b.text.startswith("1)") for b in blocks if b.kind == "body")
     assert any("утратила силу" in b.text for b in blocks)
+
+
+def test_article_repeal_note_with_heading_css_is_body() -> None:
+    html = """
+    <html><body>
+      <p class="H">Статья 60.</p>
+      <p class="H"><span>(Статья утратила силу - Федеральный закон от 31.12.2017 № 504-ФЗ)</span></p>
+      <p class="H">Статья 61. Следующая статья</p>
+    </body></html>
+    """
+    _, blocks = html_to_blocks(html)
+    assert [block.kind for block in blocks] == ["article_title", "body", "article_title"]

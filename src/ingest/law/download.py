@@ -135,6 +135,10 @@ class _BlockParser(HTMLParser):
                 # нормализуем заголовок к виду «Статья 24.1. …»
                 rest = m.group(2).strip()
                 text = f"Статья {num}." + (f" {rest}" if rest else "")
+            elif re.match(r"^\(Статья\s+утратила\s+силу\b", text, flags=re.I):
+                # Некоторые редакционные пометки в ИПС имеют тот же class=H,
+                # что и структурные заголовки. Это тело предыдущей статьи.
+                kind = "body"
             else:
                 kind = "chapter_title"
         else:
