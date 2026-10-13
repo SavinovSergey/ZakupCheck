@@ -49,6 +49,8 @@ Eval для этого подбора не использовался.
 - [evals/reports/retrieval_error_analysis.md](evals/reports/retrieval_error_analysis.md) — сводный анализ retriever
 - [evals/reports/article_shortlist_fusion.md](evals/reports/article_shortlist_fusion.md) — article shortlist и BF16/FP32
 - [evals/reports/m1000_evidence_comparison.md](evals/reports/m1000_evidence_comparison.md) — `m700` против `m1000`
+- [evals/reports/chunking_ab_comparison.md](evals/reports/chunking_ab_comparison.md) — structural против fixed-window
+- [evals/reports/chunking_role_comparison.md](evals/reports/chunking_role_comparison.md) — article retrieval и evidence packing при равных бюджетах
 - [evals/reports/reranker_runtime_comparison.md](evals/reports/reranker_runtime_comparison.md) — runtime и квантование
 - [evals/reports/law_corpus_audit.md](evals/reports/law_corpus_audit.md) — аудит корпуса
 
@@ -95,6 +97,12 @@ python scripts/run_article_shortlist_fusion_eval.py --precision fp32 --focused
 
 # Повторить evidence-grid m700/m1000 на dev
 python scripts/run_m1000_evidence_eval.py
+
+# Собрать fixed-window corpus и сравнить BM25/dense/hybrid с structural
+python scripts/run_chunking_comparison.py
+
+# Разделить оценку article retrieval и evidence packing
+python scripts/run_chunking_role_eval.py
 
 # Запустить unit-тесты без сетевого download-теста
 pytest -q --ignore=tests/test_download_fas.py

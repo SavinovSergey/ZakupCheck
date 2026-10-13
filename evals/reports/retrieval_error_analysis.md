@@ -185,6 +185,21 @@ Oracle-разложение 66 gold-id: hit=20, article miss=15, exact недо�
 Цена по CPU выше: m700 31.3 s/query против m1000 36.9 s/query (1.18× медленнее), хотя в m1000-пуле даже меньше пар. Поэтому m1000 пока не заменяет m700: прирост мал и статистически не установлен, а стоимость дополнительно выше.
 Полный отчёт: `evals/reports/m1000_evidence_comparison.md`. Eval не использовался.
 
+## Structural против fixed-window
+
+Первичный chunk-level срез. Схема B построена фиксированными окнами по всему тексту редакции с overlap 200; norm-id назначаются по пересечению оффсетов. Dense m700, BM25 m1500/m2500 и article-level hybrid сравнены с structural на одних и тех же 52 dev и 22 eval кейсах.
+Dev/blind hybrid structural→window: article R@10 0.683→0.644, exact 0.170→0.228; Δ article -0.038 (95% CI [-0.144; +0.069]).
+One-shot eval/blind: article R@10 0.492→0.530, exact 0.045→0.348. Все article-интервалы включают ноль; fixed-window не заменяет structural как основную схему.
+Это не чистая метрика article retrieval: одно окно может занять один chunk-slot, но засчитать несколько статей. Рост exact также частично объясняется гранулярностью: window-чанк несёт все пересечённые article/part/point id, тогда как structural point-чанк может нести только id пункта. Этот срез следует читать как coverage первых 10 контекстных фрагментов.
+Полный отчёт: `evals/reports/chunking_ab_comparison.md`.
+
+### Разделение article retrieval и evidence packing
+
+В контрольной оценке каждая статья занимает отдельный top-10 slot, а score мультистатейного окна взвешивается по доле его текста внутри статьи. Dev/blind hybrid structural→window: article R@10 0.683→0.625, Δ -0.058 (95% CI [-0.170; +0.055]).
+One-shot eval/blind: 0.492→0.508.
+При одинаковом evidence-бюджете 3000 условных токенов usable gold recall 0.141→0.131; window тратит 3.2% текста вне выбранных статей. Δ usable -0.010 (95% CI [-0.085; +0.061]). По dev structural лучше в обеих ролях, но интервал article-разницы включает ноль.
+Полный отчёт: `evals/reports/chunking_role_comparison.md`.
+
 ## CPU runtime и квантование cross-encoder
 
 Truncated PyTorch FP32 (`qilowoq/bge-reranker-v2-m3-en-ru`) уменьшает веса с 2271 до 1500 MB, но inference speedup равен только 1.02× (95% bootstrap CI [0.996×; 1.044×]). На 10 контрольных кейсах Spearman 0.9999, chunk top-10 overlap 1.000.

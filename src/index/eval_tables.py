@@ -23,8 +23,10 @@ class Searcher(Protocol):
     def search(self, query: str, k: int) -> list[Chunk]: ...
 
 
-def chunks_path(edition_dir: Path, max_chunk: int) -> Path:
-    return edition_dir / f"chunks_structural_m{max_chunk}.jsonl"
+def chunks_path(edition_dir: Path, max_chunk: int, *, chunking: str = "structural") -> Path:
+    if chunking not in {"structural", "window"}:
+        raise ValueError("chunking must be 'structural' or 'window'")
+    return edition_dir / f"chunks_{chunking}_m{max_chunk}.jsonl"
 
 
 def load_verified(cases_dir: Path) -> list[EvalCase]:

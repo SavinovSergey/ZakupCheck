@@ -1,4 +1,4 @@
-"""Сборка NormUnit + structural Chunk из blocks.jsonl (DESIGN §4.2)."""
+"""Сборка NormUnit + structural/fixed-window Chunk из blocks.jsonl (DESIGN §4.2)."""
 
 from __future__ import annotations
 
@@ -428,6 +428,62 @@ def build_structural_chunks(
     return chunks
 
 
+def build_fixed_window_chunks(
+    edition_id: str,
+    full_text: str,
+    units: list[NormUnit],
+    *,
+    max_chunk: int,
+    window_overlap: int = DEFAULT_WINDOW_OVERLAP,
+) -> list[Chunk]:
+    """Build scheme-B windows over the whole edition text.
+
+    Unlike structural chunks, window boundaries ignore the legal hierarchy.
+    Every emitted window receives all active norm ids whose source spans
+    intersect it. Windows covering only headings or repealed provisions are
+    omitted from the retrieval corpus.
+    """
+    if max_chunk <= 0:
+        raise ValueError("max_chunk must be positive")
+    if window_overlap < 0 or window_overlap >= max_chunk:
+        raise ValueError("window_overlap must be between zero and max_chunk")
+
+    active = sorted(
+        (unit for unit in units if not unit.is_repealed),
+        key=lambda unit: (unit.char_start, unit.char_end, unit.norm_id),
+    )
+    chunks: list[Chunk] = []
+    for start, end, text in sliding_windows(
+        full_text,
+        char_start=0,
+        max_chunk=max_chunk,
+        overlap=window_overlap,
+    ):
+        norm_ids = [
+            unit.norm_id
+            for unit in active
+            if unit.char_start < end and start < unit.char_end
+        ]
+        if not norm_ids:
+            continue
+        chunks.append(
+            Chunk(
+                chunk_id=(
+                    f"win_{edition_id}_m{max_chunk}_o{window_overlap}_{len(chunks) + 1:05d}"
+                ),
+                edition_id=edition_id,
+                chunking="window",
+                text=text,
+                char_start=start,
+                char_end=end,
+                norm_ids=norm_ids,
+                max_chunk=max_chunk,
+                article_title_prefix=False,
+            )
+        )
+    return chunks
+
+
 def load_edition_dir(edition_dir: Path) -> tuple[dict, list[dict], str]:
     edition = json.loads((edition_dir / "edition.json").read_text(encoding="utf-8"))
     blocks = [json.loads(l) for l in (edition_dir / "blocks.jsonl").open(encoding="utf-8")]
@@ -462,6 +518,7 @@ def build_corpus(
     max_chunk: int = DEFAULT_MAX_CHUNK,
     window_overlap: int = DEFAULT_WINDOW_OVERLAP,
     title_prefix: bool = False,
+    chunking: str = "structural",
 ) -> dict:
     edition_meta, blocks, full_text = load_edition_dir(edition_dir)
     edition_id = edition_meta["edition_id"]
@@ -470,13 +527,26 @@ def build_corpus(
     if empty_articles:
         raise AssertionError(f"articles without body or status: {empty_articles}")
     units = build_norm_units(edition_id, articles)
-    chunks = build_structural_chunks(
-        edition_id,
-        articles,
-        max_chunk=max_chunk,
-        window_overlap=window_overlap,
-        title_prefix=title_prefix,
-    )
+    if chunking == "structural":
+        chunks = build_structural_chunks(
+            edition_id,
+            articles,
+            max_chunk=max_chunk,
+            window_overlap=window_overlap,
+            title_prefix=title_prefix,
+        )
+    elif chunking == "window":
+        if title_prefix:
+            raise ValueError("title_prefix is not supported for fixed-window chunks")
+        chunks = build_fixed_window_chunks(
+            edition_id,
+            full_text,
+            units,
+            max_chunk=max_chunk,
+            window_overlap=window_overlap,
+        )
+    else:
+        raise ValueError("chunking must be 'structural' or 'window'")
 
     # проверка оффсетов NormUnit против full_text (мягкая: текст должен быть substring)
     # жёсткая проверка: char slice ≈ unit.text может расходиться из‑за join "\n" vs "\n\n"
@@ -487,7 +557,7 @@ def build_corpus(
             raise AssertionError(f"bad span {u.norm_id}: {u.char_start}:{u.char_end} n={n}")
 
     units_path = edition_dir / "norm_units.jsonl"
-    chunks_path = edition_dir / f"chunks_structural_m{max_chunk}.jsonl"
+    chunks_path = edition_dir / f"chunks_{chunking}_m{max_chunk}.jsonl"
     # стабильный alias для дефолта
     alias_path = edition_dir / "chunks_structural.jsonl"
 
@@ -499,7 +569,7 @@ def build_corpus(
         for c in chunks:
             fh.write(c.model_dump_json() + "\n")
 
-    if max_chunk == DEFAULT_MAX_CHUNK and not title_prefix:
+    if chunking == "structural" and max_chunk == DEFAULT_MAX_CHUNK and not title_prefix:
         alias_path.write_text(chunks_path.read_text(encoding="utf-8"), encoding="utf-8")
 
     stats = {
@@ -528,11 +598,18 @@ def build_corpus(
             "window": sum(1 for c in chunks if c.chunking == "window"),
         },
         "max_chunk": max_chunk,
+        "scheme": chunking,
+        "window_overlap": window_overlap,
         "title_prefix": title_prefix,
         "units_path": str(units_path),
         "chunks_path": str(chunks_path),
     }
-    (edition_dir / f"corpus_stats_m{max_chunk}.json").write_text(
+    stats_name = (
+        f"corpus_stats_m{max_chunk}.json"
+        if chunking == "structural"
+        else f"corpus_stats_window_m{max_chunk}.json"
+    )
+    (edition_dir / stats_name).write_text(
         json.dumps(stats, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
     )
@@ -567,7 +644,12 @@ def build_corpus(
             key=lambda value: tuple(int(part) for part in value.split(".")),
         ),
     }
-    (edition_dir / f"corpus_article_audit_m{max_chunk}.json").write_text(
+    audit_name = (
+        f"corpus_article_audit_m{max_chunk}.json"
+        if chunking == "structural"
+        else f"corpus_article_audit_window_m{max_chunk}.json"
+    )
+    (edition_dir / audit_name).write_text(
         json.dumps(audit, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
     )
@@ -592,6 +674,12 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--window-overlap", type=int, default=DEFAULT_WINDOW_OVERLAP)
     parser.add_argument(
+        "--chunking",
+        choices=("structural", "window"),
+        default="structural",
+        help="A: structural hierarchy; B: fixed windows over the whole edition text",
+    )
+    parser.add_argument(
         "--refresh-blocks-from-raw",
         action="store_true",
         help="Повторно разобрать сохранённый raw/source.html перед сборкой корпуса",
@@ -615,6 +703,7 @@ def main(argv: list[str] | None = None) -> int:
         max_chunk=args.max_chunk,
         window_overlap=args.window_overlap,
         title_prefix=args.title_prefix,
+        chunking=args.chunking,
     )
     print(json.dumps(stats, ensure_ascii=False, indent=2))
     return 0
