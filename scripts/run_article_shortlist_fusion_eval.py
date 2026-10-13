@@ -52,6 +52,7 @@ from run_hybrid_retrieval_eval import _load_indexes, _metric_dict, _rank_cases  
 from run_wide_article_rerank_eval import (  # noqa: E402
     MODEL,
     _score_pools,
+    reranker_cache_path,
     unique_article_prefix,
 )
 from schemas.corpus import Chunk  # noqa: E402
@@ -64,6 +65,24 @@ LIMIT = 10
 FINAL_CHUNKS = 8
 SEED = 20261008
 STATE_VERSION = 1
+EVAL_REPORTING_SNAPSHOT = {
+    "n": 22,
+    "precision": "bf16",
+    "dense_baseline": {
+        "recall_article": 0.553,
+        "recall_exact": 0.136,
+        "all_article": 0.455,
+    },
+    "winner": {
+        "recall_article": 0.621,
+        "recall_exact": 0.152,
+        "all_article": 0.591,
+        "mean_scored_chunks": 91.3,
+        "max_scored_chunks": 100,
+    },
+    "bootstrap_vs_dense": {"mean_delta": 0.068, "low": -0.045, "high": 0.182},
+    "outcomes": {"gains": 3, "losses": 1, "ties": 18},
+}
 
 CANDIDATE_QUOTAS = ((5, 10), (10, 10), (10, 20), (20, 30), (0, 50), (50, 0), (50, 50))
 FIRST_PASS_CHUNKS = (1, 2)
@@ -185,13 +204,17 @@ def evaluate(
     dense_articles: list[list[str]],
     bm25_articles: list[list[str]],
     scores: list[dict[str, float]],
+    *,
+    candidate_quotas: tuple[tuple[int, int], ...] = CANDIDATE_QUOTAS,
+    first_pass_sizes: tuple[int, ...] = FIRST_PASS_CHUNKS,
+    shortlist_sizes: tuple[int, ...] = SHORTLIST_ARTICLES,
 ) -> list[ExperimentResult]:
     rows: list[ExperimentResult] = []
-    for dense_quota, bm25_quota in CANDIDATE_QUOTAS:
+    for dense_quota, bm25_quota in candidate_quotas:
         selected = _selected_articles(
             dense_articles, bm25_articles, dense_quota, bm25_quota
         )
-        for first_pass in FIRST_PASS_CHUNKS:
+        for first_pass in first_pass_sizes:
             first_pools = [
                 article_candidate_pool_from_map(candidates, articles, per_article=first_pass)
                 for candidates, articles in zip(candidate_maps, selected, strict=True)
@@ -200,7 +223,7 @@ def evaluate(
                 _ce_article_scores(pool, score, articles)
                 for pool, score, articles in zip(first_pools, scores, selected, strict=True)
             ]
-            for shortlist_size in SHORTLIST_ARTICLES:
+            for shortlist_size in shortlist_sizes:
                 for strategy in _strategy_specs(shortlist_size):
                     if strategy["strategy"] == "retrieval_rrf" and first_pass != 1:
                         continue
@@ -327,7 +350,8 @@ def _write_report(state: dict[str, Any], path: Path) -> None:
         "# Retrieval-aware article shortlist fusion",
         "",
         f"Dense: `Roflmax/bge-m3-russian-legal`, m{DENSE_MAX_CHUNK}; BM25 article source: "
-        f"m{BM25_MAX_CHUNK}; cross-encoder: `{MODEL}`. Parameters were selected on dev/blind; "
+        f"m{BM25_MAX_CHUNK}; cross-encoder: `{MODEL}` in {state['precision'].upper()}. "
+        f"Scope: `{state.get('scope', 'full_grid')}`. Parameters were selected on dev/blind; "
         "eval is a single locked comparison when present.",
         "Every row is decomposed into source candidate recall, shortlist recall, exact pool ceiling, "
         "and final top-10 recall. CE cost counts unique query/chunk pairs across both passes.",
@@ -391,6 +415,47 @@ def _write_report(state: dict[str, Any], path: Path) -> None:
             "`data/analysis/article_shortlist_fusion_state.json`.",
         ]
     )
+    if "bf16_comparison" in state:
+        comparison = state["bf16_comparison"]
+        bf16 = comparison["winner"]
+        fp32 = state["winner"]
+        lines.extend(
+            [
+                "",
+                "## FP32 versus BF16 on the locked architecture",
+                "",
+                f"Winner spec equal: `{comparison['winner_spec_equal']}`; identical ordered "
+                f"top-10 chunk rankings in {comparison['rankings_identical']}/{comparison['n']} cases.",
+                f"BF16→FP32 article R@10 {bf16['at10']['recall_article']:.3f}→"
+                f"{fp32['at10']['recall_article']:.3f}; exact R@10 "
+                f"{bf16['at10']['recall_exact']:.3f}→{fp32['at10']['recall_exact']:.3f}.",
+                f"Measured throughput {comparison['bf16_pairs_per_second']:.2f}→"
+                f"{comparison['fp32_pairs_per_second']:.2f} pairs/s; estimated locked-pipeline CE "
+                f"latency {comparison['bf16_estimated_ms_per_query'] / 1000:.1f}→"
+                f"{comparison['fp32_estimated_ms_per_query'] / 1000:.1f} s/query.",
+            ]
+        )
+    if "eval_reporting_snapshot" in state:
+        evaluated = state["eval_reporting_snapshot"]
+        dense = evaluated["dense_baseline"]
+        snapshot = evaluated["winner"]
+        interval = evaluated["bootstrap_vs_dense"]
+        lines.extend(
+            [
+                "",
+                "## One-shot eval / blind (reporting snapshot)",
+                "",
+                f"This BF16 snapshot is preserved from the original locked run and was not rerun or "
+                f"used for FP32 tuning. Dense→RRF article R@10 "
+                f"{dense['recall_article']:.3f}→{snapshot['recall_article']:.3f}; exact R@10 "
+                f"{dense['recall_exact']:.3f}→{snapshot['recall_exact']:.3f}; all-hit article@10 "
+                f"{dense['all_article']:.3f}→{snapshot['all_article']:.3f}.",
+                f"Δ article R@10 {interval['mean_delta']:+.3f} (95% group-bootstrap "
+                f"[{interval['low']:+.3f}; {interval['high']:+.3f}]); gains "
+                f"{evaluated['outcomes']['gains']}, losses {evaluated['outcomes']['losses']}, "
+                f"ties {evaluated['outcomes']['ties']}.",
+            ]
+        )
     if "eval" in state:
         evaluated = state["eval"]
         dense = evaluated["dense_baseline"]
@@ -436,6 +501,12 @@ def _merge_aggregate(
             "version",
             "n",
             "count",
+            "precision",
+            "scope",
+            "cross_encoder_latency_ms",
+            "cross_encoder_pairs_per_second",
+            "bf16_comparison",
+            "eval_reporting_snapshot",
             "winner",
             "winners_by_strategy",
             "winner_vs_ce_only",
@@ -469,7 +540,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--batch-size", type=int, default=48)
     parser.add_argument("--threads", type=int, default=8)
     parser.add_argument("--checkpoint-pairs", type=int, default=240)
-    parser.add_argument("--precision", choices=("fp32", "bf16"), default="bf16")
+    parser.add_argument("--precision", choices=("fp32", "bf16"), default="fp32")
+    parser.add_argument(
+        "--focused",
+        action="store_true",
+        help="recheck the locked D10+B10, first=2, shortlist=10 architecture",
+    )
     args = parser.parse_args(argv)
 
     cases = [case for case in load_verified(args.cases_dir) if case.split == args.phase]
@@ -491,7 +567,12 @@ def main(argv: list[str] | None = None) -> int:
     bm25_m700_full, _ = _rank_cases(Bm25Index(dense_chunks), cases, k=len(dense_chunks))
     dense_articles = [unique_article_prefix(row, SOURCE_ARTICLES) for row in dense_full]
     bm25_articles = [unique_article_prefix(row, SOURCE_ARTICLES) for row in bm25_full]
-    full_articles = _selected_articles(dense_articles, bm25_articles, 50, 50)
+    full_articles = _selected_articles(
+        dense_articles,
+        bm25_articles,
+        10 if args.focused else 50,
+        10 if args.focused else 50,
+    )
     full_pools = [
         article_candidate_pool([dense, bm25], articles, per_article=FINAL_CHUNKS)
         for dense, bm25, articles in zip(
@@ -504,6 +585,11 @@ def main(argv: list[str] | None = None) -> int:
             dense_full, bm25_m700_full, full_articles, strict=True
         )
     ]
+
+    import torch
+
+    torch.set_num_threads(args.threads)
+    torch.set_num_interop_threads(1)
 
     if args.phase == "eval":
         state = json.loads(state_path.read_text(encoding="utf-8"))
@@ -522,15 +608,11 @@ def main(argv: list[str] | None = None) -> int:
             )
             for candidates, articles in zip(candidate_maps, selected, strict=True)
         ]
-        import torch
-
-        torch.set_num_threads(args.threads)
-        torch.set_num_interop_threads(1)
         first_scores, _ = _score_pools(
             cases,
             first_pools,
             split="eval",
-            cache_path=args.analysis_dir / "wide_article_rerank_scores.json",
+            cache_path=reranker_cache_path(args.analysis_dir, args.precision),
             fingerprint=corpus_fingerprint(dense_chunks),
             batch_size=args.batch_size,
             checkpoint_pairs=args.checkpoint_pairs,
@@ -566,7 +648,7 @@ def main(argv: list[str] | None = None) -> int:
             cases,
             final_pools,
             split="eval",
-            cache_path=args.analysis_dir / "wide_article_rerank_scores.json",
+            cache_path=reranker_cache_path(args.analysis_dir, args.precision),
             fingerprint=corpus_fingerprint(dense_chunks),
             batch_size=args.batch_size,
             checkpoint_pairs=args.checkpoint_pairs,
@@ -630,13 +712,34 @@ def main(argv: list[str] | None = None) -> int:
         print(f"wrote {state_path}", file=sys.stderr)
         return 0
 
-    scores = _scores_for_cases(
-        args.analysis_dir / "wide_article_rerank_scores.json",
+    scores, cross_encoder_ms = _score_pools(
         cases,
         full_pools,
-        corpus_fingerprint(dense_chunks),
+        split="dev",
+        cache_path=reranker_cache_path(args.analysis_dir, args.precision),
+        fingerprint=corpus_fingerprint(dense_chunks),
+        batch_size=args.batch_size,
+        checkpoint_pairs=args.checkpoint_pairs,
+        precision=args.precision,
     )
-    rows = evaluate(cases, candidate_maps, dense_articles, bm25_articles, scores)
+    cache = json.loads(
+        reranker_cache_path(args.analysis_dir, args.precision).read_text(encoding="utf-8")
+    )
+    cached_pairs = sum(len(values) for values in cache["splits"]["dev"].values())
+    pairs_per_second = cached_pairs / float(cache["latency_seconds"]["dev"])
+    cross_encoder_ms = (
+        sum(len(pool) for pool in full_pools) / pairs_per_second * 1000 / len(cases)
+    )
+    rows = evaluate(
+        cases,
+        candidate_maps,
+        dense_articles,
+        bm25_articles,
+        scores,
+        candidate_quotas=((10, 10),) if args.focused else CANDIDATE_QUOTAS,
+        first_pass_sizes=(2,) if args.focused else FIRST_PASS_CHUNKS,
+        shortlist_sizes=(10,) if args.focused else SHORTLIST_ARTICLES,
+    )
     by_strategy = {
         strategy: select_winner([row for row in rows if row.family == strategy])
         for strategy in sorted({row.family for row in rows})
@@ -671,6 +774,10 @@ def main(argv: list[str] | None = None) -> int:
         "n": len(cases),
         "count": len(rows),
         "model": MODEL,
+        "precision": args.precision,
+        "cross_encoder_latency_ms": winner.mean_scored_chunks / pairs_per_second * 1000,
+        "cross_encoder_pairs_per_second": pairs_per_second,
+        "scope": "focused_locked_architecture" if args.focused else "full_grid",
         "dense_model": "Roflmax/bge-m3-russian-legal",
         "dense_max_chunk": DENSE_MAX_CHUNK,
         "bm25_max_chunk": BM25_MAX_CHUNK,
@@ -685,7 +792,51 @@ def main(argv: list[str] | None = None) -> int:
         "winner_vs_joint_surface": _comparison(cases, joint_surface, winner),
         "budget_winners": _budget_winners(rows),
         "results": [_serialize(row) for row in rows],
+        "eval_reporting_snapshot": EVAL_REPORTING_SNAPSHOT,
     }
+    if args.precision == "fp32" and args.focused:
+        bf16_path = reranker_cache_path(args.analysis_dir, "bf16")
+        if bf16_path.is_file():
+            bf16_scores = _scores_for_cases(
+                bf16_path,
+                cases,
+                full_pools,
+                corpus_fingerprint(dense_chunks),
+            )
+            bf16_rows = evaluate(
+                cases,
+                candidate_maps,
+                dense_articles,
+                bm25_articles,
+                bf16_scores,
+                candidate_quotas=((10, 10),),
+                first_pass_sizes=(2,),
+                shortlist_sizes=(10,),
+            )
+            bf16_winner = select_winner(bf16_rows)
+            bf16_cache = json.loads(bf16_path.read_text(encoding="utf-8"))
+            bf16_pairs = sum(
+                len(values) for values in bf16_cache["splits"]["dev"].values()
+            )
+            bf16_rate = bf16_pairs / float(bf16_cache["latency_seconds"]["dev"])
+            state["bf16_comparison"] = {
+                "winner": _serialize(bf16_winner),
+                "winner_spec_equal": bf16_winner.spec == winner.spec,
+                "rankings_identical": sum(
+                    [chunk.chunk_id for chunk in left]
+                    == [chunk.chunk_id for chunk in right]
+                    for left, right in zip(bf16_winner.rankings, winner.rankings, strict=True)
+                ),
+                "n": len(cases),
+                "bf16_pairs_per_second": bf16_rate,
+                "fp32_pairs_per_second": pairs_per_second,
+                "bf16_estimated_ms_per_query": (
+                    bf16_winner.mean_scored_chunks / bf16_rate * 1000
+                ),
+                "fp32_estimated_ms_per_query": (
+                    winner.mean_scored_chunks / pairs_per_second * 1000
+                ),
+            }
     state_path.parent.mkdir(parents=True, exist_ok=True)
     state_path.write_text(json.dumps(state, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     _write_report(state, args.report)

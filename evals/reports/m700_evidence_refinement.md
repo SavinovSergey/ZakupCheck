@@ -1,5 +1,9 @@
 # m700 evidence refinement
 
+> **Статус:** соседи, structured-prefix и hierarchy-сетка ниже считались в BF16 и остаются
+> историческими. Победившая рабочая сетка пересчитана в FP32: конфигурация и exact recall
+> `0.314` не изменились. Актуальный контроль: `m1000_evidence_comparison.md`.
+
 Dev/blind only. Article shortlist is frozen to D10+B10, first-pass=2, three-way article RRF 1:1:2, top 10. Eval is not used.
 
 ## Results

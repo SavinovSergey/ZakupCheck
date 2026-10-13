@@ -1,5 +1,9 @@
 # Evidence selection inside locked articles
 
+> **Статус:** историческая широкая сетка на BF16-кэше. Рабочая сетка `4/8` кандидатов
+> на статью повторно проверена в чистом FP32; актуальные цифры приведены в
+> `m1000_evidence_comparison.md`.
+
 Article shortlist is frozen to the dev winner: D10+B10, first=2, three-way article RRF k=30 with weights 1:1:2, top 10 articles. Eval is not used for tuning.
 Candidate selectors compare source interleaving, chunk-level RRF, and diversity-aware RRF. Evidence rankers compare CE, chunk-level dense+BM25+CE RRF, and CE with retrieval bonus.
 

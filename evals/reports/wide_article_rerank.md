@@ -1,5 +1,9 @@
 # Wide article-first cross-encoder reranking
 
+> **Статус:** исторический BF16-sweep. Его wide-конфигурация не является текущим
+> победителем. Актуальный two-pass article selector и его FP32-контроль описаны в
+> `article_shortlist_fusion.md`.
+
 Dense: `Roflmax/bge-m3-russian-legal`, m700; BM25: m1500; cross-encoder: `qilowoq/bge-reranker-v2-m3-en-ru` (bilingual PyTorch BF16, CPU).
 Каждый источник возвращает до 50 уникальных статей. Квоты сравниваются на одинаковом shortlist до 8 m700-чанков на статью; после выбора квот для этих статей досчитываются все m700-чанки.
 Итоговый top-10 содержит лучший cross-encoder-чанк каждой статьи.

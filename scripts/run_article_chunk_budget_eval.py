@@ -37,7 +37,11 @@ from index.rerank import (  # noqa: E402
     source_quota_articles,
 )
 from run_hybrid_retrieval_eval import _load_indexes, _metric_dict, _rank_cases  # noqa: E402
-from run_wide_article_rerank_eval import MODEL, unique_article_prefix  # noqa: E402
+from run_wide_article_rerank_eval import (  # noqa: E402
+    MODEL,
+    reranker_cache_path,
+    unique_article_prefix,
+)
 from schemas.corpus import Chunk  # noqa: E402
 from schemas.eval_case import EvalCase  # noqa: E402
 
@@ -381,6 +385,9 @@ def _report(state: dict[str, Any], path: Path) -> None:
     lines = [
         "# Article/chunk budget and two-pass reranking",
         "",
+        "> **Статус:** историческая budget-сетка на BF16-кэше. Победившая архитектура "
+        "`D10+B10 → first=2 → shortlist=10` повторно проверена в FP32 без изменения recall.",
+        "",
         f"Dense: `Roflmax/bge-m3-russian-legal`, m{DENSE_MAX_CHUNK}; "
         f"BM25 article source: m{BM25_MAX_CHUNK}; evidence chunks: m700; "
         f"cross-encoder: `{MODEL}`.",
@@ -551,7 +558,7 @@ def main(argv: list[str] | None = None) -> int:
         )
     ]
     scores = _scores_for_cases(
-        args.analysis_dir / "wide_article_rerank_scores.json",
+        reranker_cache_path(args.analysis_dir, "fp32"),
         cases,
         full_pools,
         corpus_fingerprint(dense_chunks),

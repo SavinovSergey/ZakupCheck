@@ -34,7 +34,11 @@ from run_article_chunk_budget_eval import (  # noqa: E402
 )
 from run_article_shortlist_fusion_eval import _shortlist  # noqa: E402
 from run_hybrid_retrieval_eval import _load_indexes, _metric_dict, _rank_cases  # noqa: E402
-from run_wide_article_rerank_eval import _score_pools, unique_article_prefix  # noqa: E402
+from run_wide_article_rerank_eval import (  # noqa: E402
+    _score_pools,
+    reranker_cache_path,
+    unique_article_prefix,
+)
 from schemas.corpus import Chunk  # noqa: E402
 from schemas.eval_case import EvalCase  # noqa: E402
 
@@ -223,8 +227,14 @@ def _write_report(state: dict[str, Any], path: Path) -> None:
     lines = [
         "# m700 evidence refinement",
         "",
-        "Dev/blind only. Article shortlist is frozen to D10+B10, first-pass=2, "
-        "three-way article RRF 1:1:2, top 10. Eval is not used.",
+        *( [
+            "> **Статус:** расширенные гипотезы ниже считались в BF16. Победившая рабочая "
+            "сетка пересчитана в FP32 без изменения exact recall; см. `m1000_evidence_comparison.md`.",
+            "",
+        ] if state["precision"] == "bf16" else []),
+        f"Dev/blind only. Cross-encoder precision: {state['precision'].upper()}. "
+        f"Article selector: `{json.dumps(state['article_selector_spec'], ensure_ascii=False, sort_keys=True)}`. "
+        "Eval is not used.",
         "",
         "## Results",
         "",
@@ -288,6 +298,8 @@ def _merge_aggregate(
         for key in (
             "n",
             "count",
+            "precision",
+            "article_selector_spec",
             "baseline_pack20",
             "best_neighbor",
             "context_pack20",
@@ -323,7 +335,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--batch-size", type=int, default=48)
     parser.add_argument("--threads", type=int, default=8)
     parser.add_argument("--checkpoint-pairs", type=int, default=240)
-    parser.add_argument("--precision", choices=("fp32", "bf16"), default="bf16")
+    parser.add_argument("--precision", choices=("fp32", "bf16"), default="fp32")
     args = parser.parse_args(argv)
 
     cases = [case for case in load_verified(args.cases_dir) if case.split == "dev"]
@@ -356,7 +368,7 @@ def main(argv: list[str] | None = None) -> int:
         for mapping, articles in zip(first_maps, selected, strict=True)
     ]
     first_scores = _scores_for_cases(
-        args.analysis_dir / "wide_article_rerank_scores.json",
+        reranker_cache_path(args.analysis_dir, args.precision),
         cases,
         first_pools,
         corpus_fingerprint(dense_chunks),
@@ -387,11 +399,19 @@ def main(argv: list[str] | None = None) -> int:
         article_candidate_pool_from_map(mapping, articles, per_article=16)
         for mapping, articles in zip(base_maps, shortlists, strict=True)
     ]
-    base_scores = _scores_for_cases(
-        args.analysis_dir / "wide_article_rerank_scores.json",
+    import torch
+
+    torch.set_num_threads(args.threads)
+    torch.set_num_interop_threads(1)
+    base_scores, _ = _score_pools(
         cases,
         base_pools,
-        corpus_fingerprint(dense_chunks),
+        split="dev",
+        cache_path=reranker_cache_path(args.analysis_dir, args.precision),
+        fingerprint=corpus_fingerprint(dense_chunks),
+        batch_size=args.batch_size,
+        checkpoint_pairs=args.checkpoint_pairs,
+        precision=args.precision,
     )
     base_ranked = [_ranked_map(mapping, scores) for mapping, scores in zip(base_maps, base_scores, strict=True)]
 
@@ -420,15 +440,11 @@ def main(argv: list[str] | None = None) -> int:
         for mapping, articles in zip(union_maps, shortlists, strict=True)
     ]
 
-    import torch
-
-    torch.set_num_threads(args.threads)
-    torch.set_num_interop_threads(1)
     union_scores, _ = _score_pools(
         cases,
         union_pools,
         split="dev",
-        cache_path=args.analysis_dir / "wide_article_rerank_scores.json",
+        cache_path=reranker_cache_path(args.analysis_dir, args.precision),
         fingerprint=corpus_fingerprint(dense_chunks),
         batch_size=args.batch_size,
         checkpoint_pairs=args.checkpoint_pairs,
@@ -478,7 +494,7 @@ def main(argv: list[str] | None = None) -> int:
         cases,
         context_pools,
         split="dev",
-        cache_path=args.analysis_dir / "m700_structured_context_scores.json",
+        cache_path=args.analysis_dir / f"m700_structured_context_scores_{args.precision}.json",
         fingerprint=corpus_fingerprint(list(contextual_by_id.values())),
         batch_size=args.batch_size,
         checkpoint_pairs=args.checkpoint_pairs,
@@ -637,6 +653,8 @@ def main(argv: list[str] | None = None) -> int:
         "version": STATE_VERSION,
         "split": "dev",
         "query": "blind",
+        "precision": args.precision,
+        "article_selector_spec": locked,
         "n": len(cases),
         "count": 1 + len(neighbour_rows) + 2 + len(hierarchy_rows) + len(dynamic_rows),
         "baseline_pack20": _serialize(baseline),

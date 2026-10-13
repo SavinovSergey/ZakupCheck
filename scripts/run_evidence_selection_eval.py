@@ -35,7 +35,12 @@ from run_article_chunk_budget_eval import (  # noqa: E402
 )
 from run_article_shortlist_fusion_eval import _shortlist  # noqa: E402
 from run_hybrid_retrieval_eval import _load_indexes, _metric_dict, _rank_cases  # noqa: E402
-from run_wide_article_rerank_eval import MODEL, _score_pools, unique_article_prefix  # noqa: E402
+from run_wide_article_rerank_eval import (  # noqa: E402
+    MODEL,
+    _score_pools,
+    reranker_cache_path,
+    unique_article_prefix,
+)
 from schemas.corpus import Chunk  # noqa: E402
 from schemas.eval_case import EvalCase  # noqa: E402
 
@@ -300,6 +305,9 @@ def _write_report(state: dict[str, Any], path: Path) -> None:
     lines = [
         "# Evidence selection inside locked articles",
         "",
+        "> **Статус:** историческая широкая сетка на BF16-кэше. Рабочая сетка `4/8` "
+        "кандидатов/статью повторно проверена в FP32; см. `m1000_evidence_comparison.md`.",
+        "",
         "Article shortlist is frozen to the dev winner: D10+B10, first=2, three-way article RRF "
         "k=30 with weights 1:1:2, top 10 articles. Eval is not used for tuning.",
         "Candidate selectors compare source interleaving, chunk-level RRF, and diversity-aware RRF. "
@@ -410,7 +418,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--batch-size", type=int, default=48)
     parser.add_argument("--threads", type=int, default=8)
     parser.add_argument("--checkpoint-pairs", type=int, default=240)
-    parser.add_argument("--precision", choices=("fp32", "bf16"), default="bf16")
+    parser.add_argument("--precision", choices=("fp32", "bf16"), default="fp32")
     args = parser.parse_args(argv)
 
     cases = [case for case in load_verified(args.cases_dir) if case.split == "dev"]
@@ -446,7 +454,7 @@ def main(argv: list[str] | None = None) -> int:
         for mapping, articles in zip(first_maps, selected, strict=True)
     ]
     first_scores = _scores_for_cases(
-        args.analysis_dir / "wide_article_rerank_scores.json",
+        reranker_cache_path(args.analysis_dir, args.precision),
         cases,
         first_pools,
         corpus_fingerprint(dense_chunks),
@@ -518,7 +526,7 @@ def main(argv: list[str] | None = None) -> int:
         cases,
         score_pools,
         split="dev",
-        cache_path=args.analysis_dir / "wide_article_rerank_scores.json",
+        cache_path=reranker_cache_path(args.analysis_dir, args.precision),
         fingerprint=corpus_fingerprint(dense_chunks),
         batch_size=args.batch_size,
         checkpoint_pairs=args.checkpoint_pairs,

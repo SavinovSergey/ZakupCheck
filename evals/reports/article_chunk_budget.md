@@ -1,5 +1,8 @@
 # Article/chunk budget and two-pass reranking
 
+> **Статус:** историческая budget-сетка на BF16-кэше. Победившая архитектура
+> `D10+B10 → first=2 → shortlist=10` повторно проверена в FP32; article/exact recall не изменились.
+
 Dense: `Roflmax/bge-m3-russian-legal`, m700; BM25 article source: m1500; evidence chunks: m700; cross-encoder: `qilowoq/bge-reranker-v2-m3-en-ru`.
 Only dev/blind is used. Cross-encoder logits are reused from the existing cache; no model inference was performed.
 A two-pass result is considered genuinely adaptive only when the shortlist removes at least 5 articles per query on average.

@@ -13,6 +13,7 @@ from run_wide_article_rerank_eval import (
     all_chunks_for_articles,
     chunks_by_article,
     pareto_frontier,
+    reranker_cache_path,
     select_winner,
     unique_article_prefix,
 )
@@ -67,3 +68,12 @@ def test_winner_uses_exact_inside_article_tolerance_then_cost() -> None:
     cheap = _result(0.7, 10, exact=0.3)
     expensive = _result(0.7, 20, exact=0.3)
     assert select_winner([expensive, cheap]) is cheap
+
+
+def test_reranker_cache_path_separates_fp32_from_legacy_bf16(tmp_path: Path) -> None:
+    assert reranker_cache_path(tmp_path, "fp32") == (
+        tmp_path / "wide_article_rerank_scores_fp32.json"
+    )
+    assert reranker_cache_path(tmp_path, "bf16") == (
+        tmp_path / "wide_article_rerank_scores.json"
+    )
