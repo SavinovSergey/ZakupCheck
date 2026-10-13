@@ -61,6 +61,13 @@ STATE_VERSION = 1
 CACHE_VERSION = 1
 
 
+def reranker_cache_path(analysis_dir: Path, precision: str) -> Path:
+    """Keep FP32 and legacy BF16 scores physically separate."""
+    if precision == "fp32":
+        return analysis_dir / "wide_article_rerank_scores_fp32.json"
+    return analysis_dir / "wide_article_rerank_scores.json"
+
+
 @dataclass(frozen=True)
 class QuotaSpec:
     dense_articles: int
@@ -304,6 +311,11 @@ def _write_report(state: dict[str, Any], path: Path) -> None:
     lines = [
         "# Wide article-first cross-encoder reranking",
         "",
+        *( [
+            "> **Статус:** исторический BF16-sweep; текущий two-pass selector и FP32-контроль "
+            "описаны в `article_shortlist_fusion.md`.",
+            "",
+        ] if state["precision"] == "bf16" else []),
         f"Dense: `Roflmax/bge-m3-russian-legal`, m{DENSE_MAX_CHUNK}; "
         f"BM25: m{BM25_MAX_CHUNK}; cross-encoder: `{MODEL}` "
         f"(bilingual PyTorch {state['precision'].upper()}, CPU).",
@@ -426,7 +438,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--batch-size", type=int, default=48)
     parser.add_argument("--threads", type=int, default=8)
     parser.add_argument("--checkpoint-pairs", type=int, default=240)
-    parser.add_argument("--precision", choices=("fp32", "bf16"), default="bf16")
+    parser.add_argument("--precision", choices=("fp32", "bf16"), default="fp32")
     parser.add_argument(
         "--report", type=Path, default=Path("evals/reports/wide_article_rerank.md")
     )
@@ -514,7 +526,7 @@ def main(argv: list[str] | None = None) -> int:
         cases,
         score_pools,
         split=args.phase,
-        cache_path=args.analysis_dir / "wide_article_rerank_scores.json",
+        cache_path=reranker_cache_path(args.analysis_dir, args.precision),
         fingerprint=corpus_fingerprint(dense_chunks),
         batch_size=args.batch_size,
         checkpoint_pairs=args.checkpoint_pairs,
@@ -577,7 +589,7 @@ def main(argv: list[str] | None = None) -> int:
             cases,
             locked_full_pools,
             split=args.phase,
-            cache_path=args.analysis_dir / "wide_article_rerank_scores.json",
+            cache_path=reranker_cache_path(args.analysis_dir, args.precision),
             fingerprint=corpus_fingerprint(dense_chunks),
             batch_size=args.batch_size,
             checkpoint_pairs=args.checkpoint_pairs,
