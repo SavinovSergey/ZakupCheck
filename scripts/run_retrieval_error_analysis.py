@@ -1060,6 +1060,70 @@ def _report(state: dict[str, Any], report_path: Path) -> None:
                 f"Полный отчёт: `{comparison['report']}`. Eval не использовался.",
             ]
         )
+    if "chunking_comparison" in state:
+        chunking = state["chunking_comparison"]
+        chunk_dev = chunking["dev_blind"]
+        evaluated = chunking["eval_blind"]
+        dev_struct = chunk_dev["structural"]["hybrid"]["at10"]
+        dev_window = chunk_dev["window"]["hybrid"]["at10"]
+        eval_struct = evaluated["structural"]["hybrid"]["at10"]
+        eval_window = evaluated["window"]["hybrid"]["at10"]
+        interval = chunk_dev["comparisons"]["hybrid"]
+        lines.extend(
+            [
+                "",
+                "## Structural против fixed-window",
+                "",
+                "Первичный chunk-level срез. Схема B построена фиксированными окнами по всему "
+                "тексту редакции с overlap 200; "
+                "norm-id назначаются по пересечению оффсетов. Dense m700, BM25 m1500/m2500 и "
+                "article-level hybrid сравнены с structural на одних и тех же 52 dev и 22 eval кейсах.",
+                f"Dev/blind hybrid structural→window: article R@10 "
+                f"{dev_struct['recall_article']:.3f}→{dev_window['recall_article']:.3f}, exact "
+                f"{dev_struct['recall_exact']:.3f}→{dev_window['recall_exact']:.3f}; Δ article "
+                f"{interval['mean_delta']:+.3f} (95% CI [{interval['low']:+.3f}; "
+                f"{interval['high']:+.3f}]).",
+                f"One-shot eval/blind: article R@10 {eval_struct['recall_article']:.3f}→"
+                f"{eval_window['recall_article']:.3f}, exact {eval_struct['recall_exact']:.3f}→"
+                f"{eval_window['recall_exact']:.3f}. Все article-интервалы включают ноль; "
+                "fixed-window не заменяет structural как основную схему.",
+                "Это не чистая метрика article retrieval: одно окно может занять один chunk-slot, но засчитать "
+                "несколько статей. Рост exact также частично объясняется гранулярностью: window-чанк несёт все "
+                "пересечённые article/part/point id, тогда как structural point-чанк может нести "
+                "только id пункта. Этот срез следует читать как coverage первых 10 контекстных фрагментов.",
+                f"Полный отчёт: `{chunking['report']}`.",
+            ]
+        )
+    if "chunking_role_comparison" in state:
+        roles = state["chunking_role_comparison"]
+        dev_article = roles["article_retrieval"]["dev"]
+        eval_article = roles["article_retrieval"]["eval"]
+        dev_pack = roles["evidence_packing"]["dev"]["end_to_end"]
+        pack_interval = roles["evidence_packing"]["dev"]["comparisons"]["3000"]
+        interval = dev_article["comparisons"]["hybrid"]
+        lines.extend(
+            [
+                "",
+                "### Разделение article retrieval и evidence packing",
+                "",
+                "В контрольной оценке каждая статья занимает отдельный top-10 slot, а score мультистатейного "
+                "окна взвешивается по доле его текста внутри статьи. Dev/blind hybrid structural→window: article R@10 "
+                f"{dev_article['structural']['hybrid']['recall_article']:.3f}→"
+                f"{dev_article['window']['hybrid']['recall_article']:.3f}, Δ "
+                f"{interval['mean_delta']:+.3f} (95% CI [{interval['low']:+.3f}; {interval['high']:+.3f}]).",
+                "One-shot eval/blind: "
+                f"{eval_article['structural']['hybrid']['recall_article']:.3f}→"
+                f"{eval_article['window']['hybrid']['recall_article']:.3f}.",
+                "При одинаковом evidence-бюджете 3000 условных токенов usable gold recall "
+                f"{dev_pack['structural']['3000']['usable_gold_recall']:.3f}→"
+                f"{dev_pack['window']['3000']['usable_gold_recall']:.3f}; window тратит "
+                f"{dev_pack['window']['3000']['outside_selected_fraction']:.1%} текста вне выбранных статей. Δ usable "
+                f"{pack_interval['mean_delta']:+.3f} (95% CI [{pack_interval['low']:+.3f}; "
+                f"{pack_interval['high']:+.3f}]). "
+                "По dev structural лучше в обеих ролях, но интервал article-разницы включает ноль.",
+                f"Полный отчёт: `{roles['report']}`.",
+            ]
+        )
     if "reranker_runtime_comparison" in state:
         runtime = state["reranker_runtime_comparison"]
         by_name = {row["runtime"]: row for row in runtime["rows"]}
