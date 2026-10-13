@@ -7,6 +7,7 @@ from pathlib import Path
 
 from ingest.law.corpus import (
     build_norm_units,
+    build_fixed_window_chunks,
     build_structural_chunks,
     build_corpus,
     make_norm_id,
@@ -194,6 +195,47 @@ def test_sliding_windows_overlap_and_bounds() -> None:
         assert start >= 100
         assert end == start + len(chunk)
         assert chunk in text
+
+
+def test_fixed_windows_span_hierarchy_and_attach_intersecting_norms() -> None:
+    pairs = [
+        ("article_title", "Статья 31. Требования"),
+        ("body", "1. Первая часть об участниках."),
+        ("article_title", "Статья 33. Описание"),
+        ("body", "1. Вторая часть об объекте закупки."),
+    ]
+    articles = parse_articles(_blocks_from_pairs(pairs))
+    units = build_norm_units("ed", articles)
+    full_text = "\n\n".join(text for _, text in pairs)
+    chunks = build_fixed_window_chunks(
+        "ed", full_text, units, max_chunk=80, window_overlap=20
+    )
+
+    assert chunks
+    assert all(chunk.chunking == "window" for chunk in chunks)
+    assert all(chunk.char_end - chunk.char_start <= 80 for chunk in chunks)
+    assert any(
+        {"44FZ:ed:art.31", "44FZ:ed:art.33"}
+        <= {norm_id.rsplit(":ch.", 1)[0] for norm_id in chunk.norm_ids}
+        for chunk in chunks
+    )
+
+
+def test_fixed_windows_exclude_repealed_only_spans() -> None:
+    pairs = [
+        ("article_title", "Статья 60."),
+        ("body", "(Статья утратила силу - Федеральный закон)"),
+        ("article_title", "Статья 61. Действующая"),
+        ("body", "1. Действующая норма."),
+    ]
+    articles = parse_articles(_blocks_from_pairs(pairs))
+    units = build_norm_units("ed", articles)
+    chunks = build_fixed_window_chunks(
+        "ed", "\n\n".join(text for _, text in pairs), units, max_chunk=70, window_overlap=10
+    )
+
+    assert not any("art.60" in norm_id for chunk in chunks for norm_id in chunk.norm_ids)
+    assert any("art.61" in norm_id for chunk in chunks for norm_id in chunk.norm_ids)
 
 
 def test_build_corpus_from_html_fixture(tmp_path: Path) -> None:
