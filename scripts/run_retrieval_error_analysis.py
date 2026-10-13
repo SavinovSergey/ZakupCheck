@@ -883,6 +883,25 @@ def _report(state: dict[str, Any], report_path: Path) -> None:
                 f"Полный отчёт: `{fusion['report']}`.",
             ]
         )
+        if "bf16_comparison" in fusion:
+            precision = fusion["bf16_comparison"]
+            bf16 = precision["winner"]
+            lines.extend(
+                [
+                    f"Контрольный пересчёт зафиксированной архитектуры в FP32 сохранил победителя "
+                    f"и метрики: BF16→FP32 article R@10 "
+                    f"{bf16['at10']['recall_article']:.3f}→{winner['at10']['recall_article']:.3f}, "
+                    f"exact R@10 {bf16['at10']['recall_exact']:.3f}→"
+                    f"{winner['at10']['recall_exact']:.3f}. Полностью одинаковый порядок top-10 "
+                    f"чанков получен в {precision['rankings_identical']}/{precision['n']} кейсах, "
+                    f"но различия в остальных кейсах не изменили recall.",
+                    f"FP32 оказался медленнее: throughput "
+                    f"{precision['bf16_pairs_per_second']:.2f}→"
+                    f"{precision['fp32_pairs_per_second']:.2f} пар/с, расчётная CE latency "
+                    f"{precision['bf16_estimated_ms_per_query'] / 1000:.1f}→"
+                    f"{precision['fp32_estimated_ms_per_query'] / 1000:.1f} s/query.",
+                ]
+            )
         if "eval" in fusion:
             evaluated = fusion["eval"]
             eval_dense = evaluated["dense_baseline"]
@@ -897,6 +916,19 @@ def _report(state: dict[str, Any], report_path: Path) -> None:
                     f"Δ article {eval_interval['mean_delta']:+.3f} (95% CI "
                     f"[{eval_interval['low']:+.3f}; {eval_interval['high']:+.3f}])."
                 ]
+            )
+        elif "eval_reporting_snapshot" in fusion:
+            evaluated = fusion["eval_reporting_snapshot"]
+            dense = evaluated["dense_baseline"]
+            winner_eval = evaluated["winner"]
+            interval = evaluated["bootstrap_vs_dense"]
+            lines.append(
+                "Reporting-only BF16 eval snapshot (не перезапускался): "
+                f"dense→RRF article R@10 {dense['recall_article']:.3f}→"
+                f"{winner_eval['recall_article']:.3f}, exact R@10 "
+                f"{dense['recall_exact']:.3f}→{winner_eval['recall_exact']:.3f}; "
+                f"Δ article {interval['mean_delta']:+.3f} (95% CI "
+                f"[{interval['low']:+.3f}; {interval['high']:+.3f}])."
             )
     if "evidence_selection" in state:
         evidence = state["evidence_selection"]
@@ -982,6 +1014,50 @@ def _report(state: dict[str, Any], report_path: Path) -> None:
                 f"selection miss={oracle['selection_miss']}. Значительная часть оставшихся потерь "
                 "находится до evidence selection или в гранулярности корпуса.",
                 f"Полный отчёт: `{refinement['report']}`. Eval не использовался.",
+            ]
+        )
+    if "m1000_evidence" in state:
+        comparison = state["m1000_evidence"]
+        m700_fixed = comparison["m700_fixed20"]
+        m700_locked = comparison["m700_locked_dynamic"]
+        m1000_fixed = comparison["m1000_fixed20"]
+        m1000_locked = comparison["m1000_locked_dynamic"]
+        m1000_best = comparison["m1000_best20"]
+        fixed_interval = comparison["fixed20_m1000_vs_m700"]
+        locked_interval = comparison["locked_m1000_vs_m700"]
+        best_interval = comparison["best_m1000_vs_m700"]
+        lines.extend(
+            [
+                "",
+                "## Проверка evidence-чанков m1000 в FP32",
+                "",
+                f"На тех же {comparison['n']} dev/blind-кейсах и с неизменным top-10 статей "
+                f"cross-encoder `{comparison['reranker_model']}` заново запущен в FP32. "
+                "BF16-оценки в это сравнение не входят.",
+                f"При одинаковом fixed pack-20 переход m700→m1000 изменил exact recall "
+                f"{m700_fixed['metrics']['recall_exact']:.3f}→"
+                f"{m1000_fixed['metrics']['recall_exact']:.3f}, Δ {fixed_interval['mean_delta']:+.3f} "
+                f"(95% group-bootstrap [{fixed_interval['low']:+.3f}; "
+                f"{fixed_interval['high']:+.3f}]). Интервал включает ноль.",
+                f"Старая динамическая политика не переносится автоматически: exact "
+                f"{m700_locked['metrics']['recall_exact']:.3f}→"
+                f"{m1000_locked['metrics']['recall_exact']:.3f}, Δ "
+                f"{locked_interval['mean_delta']:+.3f} (95% CI "
+                f"[{locked_interval['low']:+.3f}; {locked_interval['high']:+.3f}]). "
+                "Причина — более длинные чанки меняют заполнение того же token budget.",
+                f"Лучший исследовательский m1000 pack на dev дал exact "
+                f"{m1000_best['metrics']['recall_exact']:.3f} при "
+                f"{m1000_best['mean_chunks']:.1f} чанка и "
+                f"{m1000_best['mean_estimated_tokens']:.0f} условных токенах: Δ к locked m700 "
+                f"{best_interval['mean_delta']:+.3f} (95% CI "
+                f"[{best_interval['low']:+.3f}; {best_interval['high']:+.3f}]). Это dev-подбор, "
+                "не подтверждённый на eval.",
+                f"Цена по CPU выше: m700 {comparison['m700_cross_encoder_ms_per_query'] / 1000:.1f} "
+                f"s/query против m1000 {comparison['m1000_cross_encoder_ms_per_query'] / 1000:.1f} "
+                f"s/query ({comparison['m1000_latency_ratio']:.2f}× медленнее), хотя в m1000-пуле "
+                "даже меньше пар. Поэтому m1000 пока не заменяет m700: прирост мал и статистически "
+                "не установлен, а стоимость дополнительно выше.",
+                f"Полный отчёт: `{comparison['report']}`. Eval не использовался.",
             ]
         )
     if "reranker_runtime_comparison" in state:

@@ -5,10 +5,52 @@
 
 > Не юридическое заключение. Черновик мест для проверки человеком.
 
+## Текущий статус retriever
+
+Актуальная экспериментальная схема разделяет поиск статей и выбор точных
+фрагментов:
+
+1. Dense `Roflmax/bge-m3-russian-legal` на структурных `m700`-чанках и BM25
+   на `m1500` независимо дают по 10 статей.
+2. Для каждой статьи cross-encoder `qilowoq/bge-reranker-v2-m3-en-ru` оценивает два
+   предварительных `m700`-чанка.
+3. Ранги статей объединяются three-way RRF: `k=30`, веса dense:BM25:CE
+   `1:1:2`. В article top-10 остаётся по одному представительному чанку на статью.
+4. Для генератора строится отдельный evidence pack: до 8 кандидатов на статью,
+   не более 2 финальных чанков на статью, порог CE-score `0.25`, hierarchy bonus
+   `0.05` и оценочный бюджет 3000 токенов.
+
+На 52 `dev/blind`-кейсах article-stage даёт article R@10 `0.731`, exact R@10 `0.202`
+и all-hit article@10 `0.712`. Evidence pack сохраняет article R@10 `0.731` и поднимает
+exact recall до `0.314` при 17.6 чанка и примерно 2692 условных токенах в среднем.
+Сохранённый one-shot `eval/blind` snapshot (исходный BF16-run, reporting-only) дал article R@10
+`0.621` и exact R@10 `0.152` против `0.553/0.136` у dense baseline; 95% CI article-разницы
+`[-0.045; +0.182]`. Eval не перезапускался после FP32-контроля и не использовался для подбора.
+
+### BF16 и FP32
+
+Зафиксированная архитектура повторно проверена в FP32 без подмешивания BF16-scores.
+Победитель и recall не изменились; порядок top-10 чанков полностью совпал в 38 из 52
+кейсов. На текущем CPU BF16 даёт 6.44 пары/с против 2.52 пары/с у FP32;
+расчётная CE-latency зафиксированного pipeline — 14.0 и 35.7 с/запрос соответственно.
+Поэтому BF16 — предпочтительный CPU deployment-режим, а FP32 — контрольный эталон.
+
+### m1000
+
+`m1000` остаётся исследовательским вариантом. Его лучший dev exact recall равен `0.353`
+против `0.314` у `m700`, но парная разница `+0.038` имеет 95% CI `[-0.040; +0.119]`.
+Различие не доказано; FP32 evidence-reranking занимает 36.9 с/запрос против 31.3 с у `m700`.
+Eval для этого подбора не использовался.
+
 ## Документы
 
 - [DESIGN.md](DESIGN.md) — дизайн (постановка, корпус, eval, план)
 - [docs/Отчёт_llama-bench_T-lite.md](docs/Отчёт_llama-bench_T-lite.md) — замеры инференса
+- [evals/reports/retrieval_error_analysis.md](evals/reports/retrieval_error_analysis.md) — сводный анализ retriever
+- [evals/reports/article_shortlist_fusion.md](evals/reports/article_shortlist_fusion.md) — article shortlist и BF16/FP32
+- [evals/reports/m1000_evidence_comparison.md](evals/reports/m1000_evidence_comparison.md) — `m700` против `m1000`
+- [evals/reports/reranker_runtime_comparison.md](evals/reports/reranker_runtime_comparison.md) — runtime и квантование
+- [evals/reports/law_corpus_audit.md](evals/reports/law_corpus_audit.md) — аудит корпуса
 
 ## Структура
 
@@ -20,7 +62,7 @@
 - **Модели GGUF** — например `~/models/t-lite/T-lite-it-2.1-Q5_K_M.gguf`.
 - Инференс MVP: `llama-server` + Q5_K_M + Vulkan (`-ngl 99`).
 
-## Быстрый старт (позже)
+## Быстрый старт
 
 ```bash
 python -m venv .venv
@@ -47,7 +89,20 @@ python scripts/download_law.py --list-redactions   # список rdk
 # Проверить retrieval-разметку; ключ записи пересобирает замороженный manifest
 python scripts/validate_eval_cases.py
 python scripts/validate_eval_cases.py --write-manifest
+
+# Воспроизвести FP32-проверку article-stage на dev
+python scripts/run_article_shortlist_fusion_eval.py --precision fp32 --focused
+
+# Повторить evidence-grid m700/m1000 на dev
+python scripts/run_m1000_evidence_eval.py
+
+# Запустить unit-тесты без сетевого download-теста
+pytest -q --ignore=tests/test_download_fas.py
 ```
+
+Модельные прогоны используют локальные кэши в `data/analysis/`. Eval-кейсы и модели в git
+не публикуются. Повторный запуск explicit `eval` не нужен для dev-подбора: сохранённые eval-
+результаты считаются reporting-only.
 
 Артефакты загрузки: `edition.json`, `full_text.txt`, `blocks.jsonl`, `raw/source.html`
 (далее — `scripts/build_law_corpus.py` → NormUnit / Chunk).
