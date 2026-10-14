@@ -200,6 +200,15 @@ One-shot eval/blind: 0.492→0.508.
 При одинаковом evidence-бюджете 3000 условных токенов usable gold recall 0.141→0.131; window тратит 3.2% текста вне выбранных статей. Δ usable -0.010 (95% CI [-0.085; +0.061]). По dev structural лучше в обеих ролях, но интервал article-разницы включает ноль.
 Полный отчёт: `evals/reports/chunking_role_comparison.md`.
 
+## Baseline E: таблица issue_type → нормы
+
+Baseline E получает ручной gold `issue_type`; это oracle upper bound для lookup-таблицы, а не end-to-end качество поиска нарушений.
+Честная dev-оценка leave-one-case-group-out: article R@10 0.750 (95% group-bootstrap [0.630; 0.857]), exact R@10 0.571, all-hit article@10 0.712.
+Замороженная full-dev таблица на eval: article/exact R@10 0.727/0.606; на типах, встречавшихся в dev, article R@10 0.842.
+Post-hoc zero-shot overlay для двух eval-only типов даёт article/exact R@10 0.864/0.742, но не является слепым eval-результатом.
+Вывод: при идеально известном типе таблица очень сильна. Следующий end-to-end эксперимент должен заменить gold-тип на предсказание эвристики/LLM и измерить всю цепочку.
+Полный отчёт: `evals/reports/baseline_e.md`.
+
 ## CPU runtime и квантование cross-encoder
 
 Truncated PyTorch FP32 (`qilowoq/bge-reranker-v2-m3-en-ru`) уменьшает веса с 2271 до 1500 MB, но inference speedup равен только 1.02× (95% bootstrap CI [0.996×; 1.044×]). На 10 контрольных кейсах Spearman 0.9999, chunk top-10 overlap 1.000.
@@ -215,6 +224,8 @@ GGUF Q8_0 ускоряет в 1.68× и снижает peak RSS до 1281 MB, н
 | dense m700 | 0.197 | 0.182 | 0.402 | 0.318 |
 | BM25 m700 | 0.106 | 0.091 | 0.295 | 0.273 |
 | dense article-diverse | 0.136 | 0.136 | 0.553 | 0.455 |
+| Baseline E-dev frozen (oracle issue_type) | 0.606 | 0.545 | 0.727 | 0.727 |
+| Baseline E-dev + zero-shot (post-hoc) | 0.742 | 0.682 | 0.864 | 0.864 |
 | locked article-level hybrid | 0.045 | 0.045 | 0.492 | 0.455 |
 | locked conservative hybrid (post-hoc) | 0.152 | 0.136 | 0.530 | 0.455 |
 | locked cross-encoder rerank (post-hoc) | 0.152 | 0.136 | 0.530 | 0.455 |

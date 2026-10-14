@@ -1124,6 +1124,45 @@ def _report(state: dict[str, Any], report_path: Path) -> None:
                 f"Полный отчёт: `{roles['report']}`.",
             ]
         )
+    if "baseline_e" in state:
+        baseline_e = state["baseline_e"]
+        dev_e = baseline_e["dev"]["group_holdout"]["at10"]
+        dev_ci = baseline_e["dev"]["group_holdout"]["article_at10_ci"]
+        lines.extend(
+            [
+                "",
+                "## Baseline E: таблица issue_type → нормы",
+                "",
+                "Baseline E получает ручной gold `issue_type`; это oracle upper bound "
+                "для lookup-таблицы, а не end-to-end качество поиска нарушений.",
+                f"Честная dev-оценка leave-one-case-group-out: article R@10 "
+                f"{dev_e['recall_article']:.3f} (95% group-bootstrap "
+                f"[{dev_ci['low']:.3f}; {dev_ci['high']:.3f}]), exact R@10 "
+                f"{dev_e['recall_exact']:.3f}, all-hit article@10 {dev_e['all_article']:.3f}.",
+            ]
+        )
+        if "eval" in baseline_e:
+            eval_e = baseline_e["eval"]["e_dev"]["at10"]
+            seen = baseline_e["eval"]["seen_types"]["at10"]
+            zero = baseline_e["eval"]["zero_shot"]["at10"]
+            lines.extend(
+                [
+                    f"Замороженная full-dev таблица на eval: article/exact R@10 "
+                    f"{eval_e['recall_article']:.3f}/{eval_e['recall_exact']:.3f}; на типах, "
+                    f"встречавшихся в dev, article R@10 {seen['recall_article']:.3f}.",
+                    f"Post-hoc zero-shot overlay для двух eval-only типов даёт "
+                    f"article/exact R@10 {zero['recall_article']:.3f}/{zero['recall_exact']:.3f}, "
+                    "но не является слепым eval-результатом.",
+                ]
+            )
+        lines.extend(
+            [
+                "Вывод: при идеально известном типе таблица очень сильна. "
+                "Следующий end-to-end эксперимент должен заменить gold-тип на "
+                "предсказание эвристики/LLM и измерить всю цепочку.",
+                f"Полный отчёт: `{baseline_e['report']}`.",
+            ]
+        )
     if "reranker_runtime_comparison" in state:
         runtime = state["reranker_runtime_comparison"]
         by_name = {row["runtime"]: row for row in runtime["rows"]}
@@ -1178,6 +1217,20 @@ def _report(state: dict[str, Any], report_path: Path) -> None:
                 f"| {item['name']} | {metrics['recall_exact']:.3f} | {metrics['all_exact']:.3f} "
                 f"| {metrics['recall_article']:.3f} | {metrics['all_article']:.3f} |"
             )
+        baseline_e = state.get("baseline_e")
+        if baseline_e is not None and "eval" in baseline_e:
+            for label, result in (
+                ("Baseline E-dev frozen (oracle issue_type)", baseline_e["eval"]["e_dev"]),
+                (
+                    "Baseline E-dev + zero-shot (post-hoc)",
+                    baseline_e["eval"]["zero_shot"],
+                ),
+            ):
+                metrics = result["at10"]
+                lines.append(
+                    f"| {label} | {metrics['recall_exact']:.3f} | {metrics['all_exact']:.3f} "
+                    f"| {metrics['recall_article']:.3f} | {metrics['all_article']:.3f} |"
+                )
         bm25_screen = state.get("bm25_diversification")
         if bm25_screen is not None and "eval" in bm25_screen:
             bm25_chunk = bm25_screen["dev"]["winner"]["max_chunk"]
