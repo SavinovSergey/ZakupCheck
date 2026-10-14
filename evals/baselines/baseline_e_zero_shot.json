@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "edition_id": "2026-08-04",
+  "description": "Post-hoc sensitivity overlay for issue types absent from dev. Not a blind eval result.",
+  "overrides": {
+    "contract_conclusion_violation": [
+      "44FZ:2026-08-04:art.51:ch.1"
+    ],
+    "unrelated_items_in_one_lot": [
+      "44FZ:2026-08-04:art.42:ch.2:p.1",
+      "44FZ:2026-08-04:art.8"
+    ]
+  }
+}
