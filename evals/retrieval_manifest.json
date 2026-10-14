@@ -14,6 +14,7 @@
       "gold_norms": [
         "44FZ:2026-08-04:art.48:ch.12:p.3"
       ],
+      "issue_type": "rejection_documents_or_qualification",
       "topic": "application_review"
     },
     {
@@ -22,6 +23,7 @@
       "gold_norms": [
         "44FZ:2026-08-04:art.48:ch.12:p.8"
       ],
+      "issue_type": "rejection_product_or_information",
       "topic": "application_review"
     },
     {
@@ -30,6 +32,7 @@
       "gold_norms": [
         "44FZ:2026-08-04:art.49:ch.5:p.1"
       ],
+      "issue_type": "rejection_product_or_information",
       "topic": "application_review"
     },
     {
@@ -38,6 +41,7 @@
       "gold_norms": [
         "44FZ:2026-08-04:art.48:ch.12:p.3"
       ],
+      "issue_type": "other_unlawful_rejection",
       "topic": "application_review"
     },
     {
@@ -47,6 +51,7 @@
         "44FZ:2026-08-04:art.49:ch.5",
         "44FZ:2026-08-04:art.48:ch.12:p.1"
       ],
+      "issue_type": "rejection_product_or_information",
       "topic": "application_review"
     },
     {
@@ -56,6 +61,7 @@
         "44FZ:2026-08-04:art.49:ch.5",
         "44FZ:2026-08-04:art.48:ch.12:p.8"
       ],
+      "issue_type": "rejection_product_or_information",
       "topic": "application_review"
     },
     {
@@ -65,6 +71,7 @@
         "44FZ:2026-08-04:art.49:ch.5",
         "44FZ:2026-08-04:art.48:ch.12:p.1"
       ],
+      "issue_type": "unlawful_admission",
       "topic": "application_review"
     },
     {
@@ -74,6 +81,7 @@
         "44FZ:2026-08-04:art.33:ch.1:p.3",
         "44FZ:2026-08-04:art.8:ch.2"
       ],
+      "issue_type": "defective_object_description",
       "topic": "object_description"
     },
     {
@@ -83,6 +91,7 @@
         "44FZ:2026-08-04:art.42:ch.1",
         "44FZ:2026-08-04:art.42:ch.2"
       ],
+      "issue_type": "defective_object_description",
       "topic": "object_description"
     },
     {
@@ -91,6 +100,7 @@
       "gold_norms": [
         "44FZ:2026-08-04:art.48:ch.12:p.8"
       ],
+      "issue_type": "unclear",
       "topic": "application_review"
     },
     {
@@ -99,6 +109,7 @@
       "gold_norms": [
         "44FZ:2026-08-04:art.33:ch.1"
       ],
+      "issue_type": "defective_object_description",
       "topic": "object_description"
     },
     {
@@ -107,6 +118,7 @@
       "gold_norms": [
         "44FZ:2026-08-04:art.7"
       ],
+      "issue_type": "inconsistent_procurement_documents",
       "topic": "object_description"
     },
     {
@@ -116,6 +128,7 @@
         "44FZ:2026-08-04:art.49:ch.5:p.1",
         "44FZ:2026-08-04:art.33:ch.1:p.1"
       ],
+      "issue_type": "rejection_product_or_information",
       "topic": "application_review"
     },
     {
@@ -125,6 +138,7 @@
         "44FZ:2026-08-04:art.48:ch.12:p.8",
         "44FZ:2026-08-04:art.49:ch.5:p.1"
       ],
+      "issue_type": "rejection_product_or_information",
       "topic": "application_review"
     },
     {
@@ -134,6 +148,7 @@
         "44FZ:2026-08-04:art.33:ch.1:p.2",
         "44FZ:2026-08-04:art.42:ch.2:p.1"
       ],
+      "issue_type": "defective_object_description",
       "topic": "object_description"
     },
     {
@@ -142,6 +157,7 @@
       "gold_norms": [
         "44FZ:2026-08-04:art.49:ch.5:p.1"
       ],
+      "issue_type": "rejection_product_or_information",
       "topic": "application_review"
     },
     {
@@ -151,6 +167,7 @@
         "44FZ:2026-08-04:art.8",
         "44FZ:2026-08-04:art.33:ch.1:p.1"
       ],
+      "issue_type": "restrictive_object_description",
       "topic": "competition"
     },
     {
@@ -161,6 +178,7 @@
         "44FZ:2026-08-04:art.33:ch.3",
         "44FZ:2026-08-04:art.42:ch.2:p.1"
       ],
+      "issue_type": "restrictive_object_description",
       "topic": "object_description"
     },
     {
@@ -169,6 +187,7 @@
       "gold_norms": [
         "44FZ:2026-08-04:art.42:ch.2:p.1"
       ],
+      "issue_type": "defective_object_description",
       "topic": "object_description"
     },
     {
@@ -178,6 +197,7 @@
         "44FZ:2026-08-04:art.42:ch.2:p.1",
         "44FZ:2026-08-04:art.50:ch.3:p.1"
       ],
+      "issue_type": "rejection_documents_or_qualification",
       "topic": "application_review"
     },
     {
@@ -186,6 +206,7 @@
       "gold_norms": [
         "44FZ:2026-08-04:art.42:ch.5"
       ],
+      "issue_type": "inconsistent_procurement_documents",
       "topic": "notice_content"
     },
     {
@@ -194,6 +215,7 @@
       "gold_norms": [
         "44FZ:2026-08-04:art.49:ch.5:p.1"
       ],
+      "issue_type": "other_unlawful_rejection",
       "topic": "application_review"
     },
     {
@@ -202,6 +224,7 @@
       "gold_norms": [
         "44FZ:2026-08-04:art.31:ch.6"
       ],
+      "issue_type": "improper_participant_requirements",
       "topic": "participant_requirements"
     },
     {
@@ -211,6 +234,7 @@
         "44FZ:2026-08-04:art.31:ch.6",
         "44FZ:2026-08-04:art.42:ch.2:p.4"
       ],
+      "issue_type": "improper_participant_requirements",
       "topic": "participant_requirements"
     },
     {
@@ -219,6 +243,7 @@
       "gold_norms": [
         "44FZ:2026-08-04:art.31:ch.9"
       ],
+      "issue_type": "rejection_documents_or_qualification",
       "topic": "application_review"
     },
     {
@@ -227,6 +252,7 @@
       "gold_norms": [
         "44FZ:2026-08-04:art.24.1:ch.13"
       ],
+      "issue_type": "electronic_procedure_failure",
       "topic": "application_review"
     },
     {
@@ -235,6 +261,7 @@
       "gold_norms": [
         "44FZ:2026-08-04:art.24.1:ch.13"
       ],
+      "issue_type": "electronic_procedure_failure",
       "topic": "application_review"
     },
     {
@@ -243,6 +270,7 @@
       "gold_norms": [
         "44FZ:2026-08-04:art.24.1:ch.13"
       ],
+      "issue_type": "electronic_procedure_failure",
       "topic": "application_review"
     },
     {
@@ -251,6 +279,7 @@
       "gold_norms": [
         "44FZ:2026-08-04:art.44:ch.5:p.3"
       ],
+      "issue_type": "electronic_procedure_failure",
       "topic": "application_review"
     },
     {
@@ -259,6 +288,7 @@
       "gold_norms": [
         "44FZ:2026-08-04:art.24.1:ch.13"
       ],
+      "issue_type": "electronic_procedure_failure",
       "topic": "application_review"
     },
     {
@@ -267,6 +297,7 @@
       "gold_norms": [
         "44FZ:2026-08-04:art.48:ch.12:p.8"
       ],
+      "issue_type": "rejection_product_or_information",
       "topic": "application_review"
     },
     {
@@ -275,6 +306,7 @@
       "gold_norms": [
         "44FZ:2026-08-04:art.48:ch.12:p.8"
       ],
+      "issue_type": "rejection_product_or_information",
       "topic": "application_review"
     },
     {
@@ -283,6 +315,7 @@
       "gold_norms": [
         "44FZ:2026-08-04:art.48:ch.12:p.8"
       ],
+      "issue_type": "rejection_product_or_information",
       "topic": "application_review"
     },
     {
@@ -291,6 +324,7 @@
       "gold_norms": [
         "44FZ:2026-08-04:art.33:ch.1:p.2"
       ],
+      "issue_type": "defective_object_description",
       "topic": "object_description"
     },
     {
@@ -299,6 +333,7 @@
       "gold_norms": [
         "44FZ:2026-08-04:art.42:ch.2:p.1"
       ],
+      "issue_type": "restrictive_object_description",
       "topic": "notice_content"
     },
     {
@@ -307,6 +342,7 @@
       "gold_norms": [
         "44FZ:2026-08-04:art.49:ch.5:p.1"
       ],
+      "issue_type": "rejection_product_or_information",
       "topic": "application_review"
     },
     {
@@ -316,6 +352,7 @@
         "44FZ:2026-08-04:art.31:ch.5",
         "44FZ:2026-08-04:art.42:ch.1:p.12"
       ],
+      "issue_type": "improper_participant_requirements",
       "topic": "participant_requirements"
     },
     {
@@ -324,6 +361,7 @@
       "gold_norms": [
         "44FZ:2026-08-04:art.49:ch.5:p.1"
       ],
+      "issue_type": "unlawful_admission",
       "topic": "application_review"
     },
     {
@@ -332,6 +370,7 @@
       "gold_norms": [
         "44FZ:2026-08-04:art.33:ch.1:p.1"
       ],
+      "issue_type": "defective_object_description",
       "topic": "object_description"
     },
     {
@@ -340,6 +379,7 @@
       "gold_norms": [
         "44FZ:2026-08-04:art.49:ch.5:p.1"
       ],
+      "issue_type": "rejection_product_or_information",
       "topic": "application_review"
     },
     {
@@ -348,6 +388,7 @@
       "gold_norms": [
         "44FZ:2026-08-04:art.49:ch.5:p.1"
       ],
+      "issue_type": "rejection_documents_or_qualification",
       "topic": "application_review"
     },
     {
@@ -356,6 +397,7 @@
       "gold_norms": [
         "44FZ:2026-08-04:art.31:ch.1:p.1"
       ],
+      "issue_type": "improper_participant_requirements",
       "topic": "participant_requirements"
     },
     {
@@ -364,6 +406,7 @@
       "gold_norms": [
         "44FZ:2026-08-04:art.49:ch.5:p.1"
       ],
+      "issue_type": "rejection_product_or_information",
       "topic": "application_review"
     },
     {
@@ -372,6 +415,7 @@
       "gold_norms": [
         "44FZ:2026-08-04:art.42:ch.2:p.1"
       ],
+      "issue_type": "restrictive_object_description",
       "topic": "notice_content"
     },
     {
@@ -380,6 +424,7 @@
       "gold_norms": [
         "44FZ:2026-08-04:art.42:ch.2:p.1"
       ],
+      "issue_type": "restrictive_object_description",
       "topic": "notice_content"
     },
     {
@@ -388,6 +433,7 @@
       "gold_norms": [
         "44FZ:2026-08-04:art.42:ch.2:p.1"
       ],
+      "issue_type": "restrictive_object_description",
       "topic": "notice_content"
     },
     {
@@ -396,6 +442,7 @@
       "gold_norms": [
         "44FZ:2026-08-04:art.51:ch.2:p.1"
       ],
+      "issue_type": "statutory_preference_violation",
       "topic": "contract_conclusion"
     },
     {
@@ -404,6 +451,7 @@
       "gold_norms": [
         "44FZ:2026-08-04:art.42:ch.1:p.5"
       ],
+      "issue_type": "inconsistent_procurement_documents",
       "topic": "notice_content"
     },
     {
@@ -412,6 +460,7 @@
       "gold_norms": [
         "44FZ:2026-08-04:art.93:ch.12:p.6"
       ],
+      "issue_type": "rejection_product_or_information",
       "topic": "single_supplier_procedure"
     },
     {
@@ -420,6 +469,7 @@
       "gold_norms": [
         "44FZ:2026-08-04:art.33:ch.1:p.1"
       ],
+      "issue_type": "defective_object_description",
       "topic": "object_description"
     },
     {
@@ -428,6 +478,7 @@
       "gold_norms": [
         "44FZ:2026-08-04:art.42:ch.2:p.1"
       ],
+      "issue_type": "restrictive_object_description",
       "topic": "object_description"
     },
     {
@@ -436,6 +487,7 @@
       "gold_norms": [
         "44FZ:2026-08-04:art.42:ch.2:p.1"
       ],
+      "issue_type": "restrictive_object_description",
       "topic": "object_description"
     }
   ],
@@ -449,6 +501,7 @@
         "44FZ:2026-08-04:art.33:ch.2",
         "44FZ:2026-08-04:art.42:ch.2:p.1"
       ],
+      "issue_type": "defective_object_description",
       "topic": "object_description"
     },
     {
@@ -457,6 +510,7 @@
       "gold_norms": [
         "44FZ:2026-08-04:art.42:ch.2:p.1"
       ],
+      "issue_type": "restrictive_object_description",
       "topic": "notice_content"
     },
     {
@@ -465,6 +519,7 @@
       "gold_norms": [
         "44FZ:2026-08-04:art.42:ch.2:p.1"
       ],
+      "issue_type": "unrelated_items_in_one_lot",
       "topic": "notice_content"
     },
     {
@@ -473,6 +528,7 @@
       "gold_norms": [
         "44FZ:2026-08-04:art.49:ch.5:p.1"
       ],
+      "issue_type": "rejection_product_or_information",
       "topic": "application_review"
     },
     {
@@ -481,6 +537,7 @@
       "gold_norms": [
         "44FZ:2026-08-04:art.51:ch.1"
       ],
+      "issue_type": "contract_conclusion_violation",
       "topic": "contract_conclusion"
     },
     {
@@ -489,6 +546,7 @@
       "gold_norms": [
         "44FZ:2026-08-04:art.42:ch.2:p.1"
       ],
+      "issue_type": "restrictive_object_description",
       "topic": "object_description"
     },
     {
@@ -497,6 +555,7 @@
       "gold_norms": [
         "44FZ:2026-08-04:art.48:ch.3:p.1"
       ],
+      "issue_type": "other_unlawful_rejection",
       "topic": "application_review"
     },
     {
@@ -505,6 +564,7 @@
       "gold_norms": [
         "44FZ:2026-08-04:art.42:ch.1:p.5"
       ],
+      "issue_type": "restrictive_object_description",
       "topic": "notice_content"
     },
     {
@@ -513,6 +573,7 @@
       "gold_norms": [
         "44FZ:2026-08-04:art.8"
       ],
+      "issue_type": "unrelated_items_in_one_lot",
       "topic": "competition"
     },
     {
@@ -523,6 +584,7 @@
         "44FZ:2026-08-04:art.33:ch.1:p.1",
         "44FZ:2026-08-04:art.8:ch.2"
       ],
+      "issue_type": "restrictive_object_description",
       "topic": "object_description"
     },
     {
@@ -531,6 +593,7 @@
       "gold_norms": [
         "44FZ:2026-08-04:art.33:ch.1:p.1"
       ],
+      "issue_type": "defective_object_description",
       "topic": "object_description"
     },
     {
@@ -539,6 +602,7 @@
       "gold_norms": [
         "44FZ:2026-08-04:art.42:ch.2:p.1"
       ],
+      "issue_type": "restrictive_object_description",
       "topic": "object_description"
     },
     {
@@ -547,6 +611,7 @@
       "gold_norms": [
         "44FZ:2026-08-04:art.33:ch.1:p.1"
       ],
+      "issue_type": "defective_object_description",
       "topic": "object_description"
     },
     {
@@ -555,6 +620,7 @@
       "gold_norms": [
         "44FZ:2026-08-04:art.33:ch.1:p.1"
       ],
+      "issue_type": "restrictive_object_description",
       "topic": "object_description"
     },
     {
@@ -563,6 +629,7 @@
       "gold_norms": [
         "44FZ:2026-08-04:art.93:ch.12"
       ],
+      "issue_type": "rejection_documents_or_qualification",
       "topic": "application_review"
     },
     {
@@ -571,6 +638,7 @@
       "gold_norms": [
         "44FZ:2026-08-04:art.50:ch.3"
       ],
+      "issue_type": "rejection_product_or_information",
       "topic": "application_review"
     },
     {
@@ -579,6 +647,7 @@
       "gold_norms": [
         "44FZ:2026-08-04:art.50:ch.3"
       ],
+      "issue_type": "rejection_product_or_information",
       "topic": "application_review"
     },
     {
@@ -587,6 +656,7 @@
       "gold_norms": [
         "44FZ:2026-08-04:art.49:ch.5:p.1"
       ],
+      "issue_type": "rejection_documents_or_qualification",
       "topic": "application_review"
     },
     {
@@ -595,6 +665,7 @@
       "gold_norms": [
         "44FZ:2026-08-04:art.49:ch.5:p.1"
       ],
+      "issue_type": "rejection_product_or_information",
       "topic": "application_review"
     },
     {
@@ -604,6 +675,7 @@
         "44FZ:2026-08-04:art.48:ch.12:p.8",
         "44FZ:2026-08-04:art.49:ch.5:p.1"
       ],
+      "issue_type": "rejection_product_or_information",
       "topic": "application_review"
     },
     {
@@ -614,6 +686,7 @@
         "44FZ:2026-08-04:art.31:ch.5",
         "44FZ:2026-08-04:art.42:ch.1:p.12"
       ],
+      "issue_type": "improper_participant_requirements",
       "topic": "participant_requirements"
     },
     {
@@ -622,11 +695,12 @@
       "gold_norms": [
         "44FZ:2026-08-04:art.49:ch.5:p.1"
       ],
+      "issue_type": "unlawful_admission",
       "topic": "application_review"
     }
   ],
   "law_content_sha256": "271d16af182c5f2b02966ed56c78a69fc5e420461a198191b4d38210b0d4c2d2",
-  "manifest_version": 1,
+  "manifest_version": 2,
   "non_benchmark": [
     {
       "annotation_status": "excluded",

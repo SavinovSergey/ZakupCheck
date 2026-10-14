@@ -53,6 +53,7 @@ def case_data(path: str = "data/raw/fas/id/text/decision.txt") -> dict:
         "doc_paths": ["data/raw/fas/id/", "data/raw/notices/notice-id/"],
         "notice_date": "2026-08-05",
         "fas_decision_id": "id",
+        "issue_type": "defective_object_description",
     }
 
 
@@ -106,6 +107,29 @@ def test_ineligible_case_cannot_be_verified(field: str, value: object) -> None:
     data[field] = value
     with pytest.raises(ValidationError):
         EvalCase.model_validate(data)
+
+
+def test_verified_case_requires_frozen_issue_type() -> None:
+    missing = case_data()
+    missing["issue_type"] = None
+    with pytest.raises(ValidationError):
+        EvalCase.model_validate(missing)
+
+    legacy = case_data()
+    legacy["issue_type"] = "product_specific_legacy_label"
+    with pytest.raises(ValidationError):
+        EvalCase.model_validate(legacy)
+
+
+def test_excluded_case_may_retain_legacy_issue_type() -> None:
+    data = case_data()
+    data.update(
+        annotation_status="excluded",
+        outcome="rejected",
+        exclusion_reasons=["rejected_argument"],
+        issue_type="product_specific_legacy_label",
+    )
+    EvalCase.model_validate(data)
 
 
 def test_draft_is_not_added_to_benchmark_manifest(tmp_path: Path) -> None:
@@ -181,3 +205,6 @@ def test_manifest_is_reproducible(tmp_path: Path) -> None:
     forward = manifest_json(build_manifest([first, second], edition(), norms_path))
     reverse = manifest_json(build_manifest([second, first], edition(), norms_path))
     assert forward == reverse
+    manifest = build_manifest([first, second], edition(), norms_path)
+    assert manifest["manifest_version"] == 2
+    assert manifest["dev"][0]["issue_type"] == "defective_object_description"

@@ -33,6 +33,27 @@ ExclusionReason = Literal[
     "edition_not_applicable",
 ]
 
+# Frozen coarse taxonomy for benchmark cases and baseline E. Draft/excluded
+# annotations may retain legacy fine-grained labels until they are reviewed.
+VERIFIED_ISSUE_TYPES = frozenset(
+    {
+        "restrictive_object_description",
+        "defective_object_description",
+        "unrelated_items_in_one_lot",
+        "improper_participant_requirements",
+        "rejection_product_or_information",
+        "rejection_documents_or_qualification",
+        "other_unlawful_rejection",
+        "unlawful_admission",
+        "inconsistent_procurement_documents",
+        "electronic_procedure_failure",
+        "contract_conclusion_violation",
+        "statutory_preference_violation",
+        "other",
+        "unclear",
+    }
+)
+
 
 class DocLocator(BaseModel):
     """Где в извещении / приложении лежит doc_fragment (для генерации и faithfulness)."""
@@ -103,7 +124,7 @@ class EvalCase(BaseModel):
     fas_decision_url: str | None = None
 
     # --- генерация / человек (не строгая метрика retrieval) ---
-    issue_type: str | None = None  # enum зафиксируем после первых ~10 кейсов
+    issue_type: str | None = None
     gold_notes: str | None = None
 
     @model_validator(mode="after")
@@ -124,10 +145,16 @@ class EvalCase(BaseModel):
                 "complaint_argument_source": self.complaint_argument_source,
                 "outcome_evidence": self.outcome_evidence,
                 "notice_date": self.notice_date,
+                "issue_type": self.issue_type,
             }
             missing = [name for name, value in required.items() if not value]
             if missing:
                 raise ValueError(f"verified case is missing: {', '.join(missing)}")
+            if self.issue_type not in VERIFIED_ISSUE_TYPES:
+                raise ValueError(
+                    "verified issue_type is outside the frozen taxonomy: "
+                    f"{self.issue_type}"
+                )
             if self.outcome != "upheld":
                 raise ValueError("verified retrieval case must be upheld")
             if self.relies_on_bylaw:
