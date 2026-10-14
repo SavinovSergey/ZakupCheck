@@ -220,7 +220,7 @@ def build_manifest(cases: Iterable[EvalCase], edition: Edition, norms_path: Path
     excluded = [case for case in ordered if case.annotation_status != "verified"]
     counts = Counter(case.annotation_status for case in ordered)
     return {
-        "manifest_version": 1,
+        "manifest_version": 2,
         "edition_id": edition.edition_id,
         "law_content_sha256": edition.content_sha256,
         "norm_units_sha256": sha256_file(norms_path),
@@ -253,6 +253,7 @@ def _manifest_case(case: EvalCase) -> dict[str, Any]:
         "case_id": case.case_id,
         "case_group_id": case.case_group_id,
         "topic": case.topic,
+        "issue_type": case.issue_type,
         "gold_norms": case.gold_norms,
     }
 

@@ -42,6 +42,17 @@ exact recall до `0.314` при 17.6 чанка и примерно 2692 усл
 Различие не доказано; FP32 evidence-reranking занимает 36.9 с/запрос против 31.3 с у `m700`.
 Eval для этого подбора не использовался.
 
+### Baseline E
+
+Baseline E не ищет по тексту закона: он получает уже известный `issue_type` и
+возвращает замороженный список норм. Честная leave-one-`case_group_id`-out оценка
+на dev дала article/exact R@10 `0.750/0.571`. Замороженная full-dev таблица на eval дала
+`0.727/0.606`, а на типах, встречавшихся в dev, article R@10 равен `0.842`.
+
+Это oracle upper bound, потому что тип взят из ручной разметки. Post-hoc zero-shot overlay
+для двух eval-only типов показал `0.864/0.742`, но не считается слепым eval. Для
+end-to-end оценки ещё нужно заменить gold `issue_type` на выход эвристики или LLM.
+
 ## Документы
 
 - [DESIGN.md](DESIGN.md) — дизайн (постановка, корпус, eval, план)
@@ -51,6 +62,7 @@ Eval для этого подбора не использовался.
 - [evals/reports/m1000_evidence_comparison.md](evals/reports/m1000_evidence_comparison.md) — `m700` против `m1000`
 - [evals/reports/chunking_ab_comparison.md](evals/reports/chunking_ab_comparison.md) — structural против fixed-window
 - [evals/reports/chunking_role_comparison.md](evals/reports/chunking_role_comparison.md) — article retrieval и evidence packing при равных бюджетах
+- [evals/reports/baseline_e.md](evals/reports/baseline_e.md) — oracle `issue_type → нормы`
 - [evals/reports/reranker_runtime_comparison.md](evals/reports/reranker_runtime_comparison.md) — runtime и квантование
 - [evals/reports/law_corpus_audit.md](evals/reports/law_corpus_audit.md) — аудит корпуса
 
@@ -103,6 +115,10 @@ python scripts/run_chunking_comparison.py
 
 # Разделить оценку article retrieval и evidence packing
 python scripts/run_chunking_role_eval.py
+
+# Baseline E: dev group-holdout (без eval) и явный frozen-eval
+python scripts/run_baseline_e_eval.py
+python scripts/run_baseline_e_eval.py --split eval
 
 # Запустить unit-тесты без сетевого download-теста
 pytest -q --ignore=tests/test_download_fas.py
