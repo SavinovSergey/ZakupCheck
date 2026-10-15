@@ -1,0 +1,18 @@
+{
+  "global": [
+    {
+      "text": "Иванов Иван Иванович",
+      "kind": "PERSON",
+      "ignore_case": false
+    }
+  ],
+  "cases": {
+    "example_case_id": [
+      {
+        "text": "г. Москва, ул. Примерная, д. 1",
+        "kind": "ADDRESS",
+        "ignore_case": true
+      }
+    ]
+  }
+}
