@@ -11,6 +11,8 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     "pytest>=8.0",
+    "numpy>=1.26",
+    "rank-bm25>=0.2.2",
 ]
 fas = [
     "pypdf>=4.0",
