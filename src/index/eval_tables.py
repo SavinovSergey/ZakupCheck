@@ -8,6 +8,7 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Protocol
 
+from data_access.public_dataset import PublicRetrievalCase, load_public_cases
 from index.recall import AggregateRecall, CaseScore, aggregate, score_case
 from schemas.corpus import Chunk
 from schemas.eval_case import EvalCase
@@ -23,13 +24,21 @@ class Searcher(Protocol):
     def search(self, query: str, k: int) -> list[Chunk]: ...
 
 
+RetrievalCase = EvalCase | PublicRetrievalCase
+
+
 def chunks_path(edition_dir: Path, max_chunk: int, *, chunking: str = "structural") -> Path:
     if chunking not in {"structural", "window"}:
         raise ValueError("chunking must be 'structural' or 'window'")
     return edition_dir / f"chunks_{chunking}_m{max_chunk}.jsonl"
 
 
-def load_verified(cases_dir: Path) -> list[EvalCase]:
+def load_verified(cases_dir: Path) -> list[RetrievalCase]:
+    """Load metric-ready private cases or labeled cases from a public release."""
+
+    if (cases_dir / "dev.jsonl").is_file():
+        return [case for case in load_public_cases(cases_dir) if case.labels_available]
+
     cases: list[EvalCase] = []
     for path in sorted(cases_dir.glob("*.json")):
         if path.name == "schema_example.json":
@@ -40,7 +49,7 @@ def load_verified(cases_dir: Path) -> list[EvalCase]:
     return cases
 
 
-def query_text(case: EvalCase, variant: str) -> str:
+def query_text(case: RetrievalCase, variant: str) -> str:
     text = getattr(case, QUERY_FIELDS[variant])
     if not text:
         raise ValueError(f"{case.case_id}: empty {variant} query")
@@ -49,7 +58,7 @@ def query_text(case: EvalCase, variant: str) -> str:
 
 def evaluate_index(
     index: Searcher,
-    cases: Sequence[EvalCase],
+    cases: Sequence[RetrievalCase],
     variant: str,
 ) -> tuple[
     dict[tuple[str, str], dict[int, list[CaseScore]]],
