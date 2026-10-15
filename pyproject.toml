@@ -24,6 +24,9 @@ retrieval = [
 benchmark = [
     "onnxruntime>=1.30",
 ]
+data = [
+    "huggingface-hub>=0.26",
+]
 
 [build-system]
 requires = ["setuptools>=68"]
