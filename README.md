@@ -1,137 +1,291 @@
 # ZakupCheck
 
-Проверка извещений о закупке на соответствие 44-ФЗ с обязательным цитированием норм
-(on-prem LLM, свой eval на решениях ФАС).
+ZakupCheck — исследовательский прототип ассистента для проверки извещений о
+государственных закупках на соответствие 44-ФЗ.
 
-> Не юридическое заключение. Черновик мест для проверки человеком.
+Публичный обезличенный benchmark доступен на Hugging Face:
+[SergeySavinov/zakupcheck-44fz-retrieval-benchmark](https://huggingface.co/datasets/SergeySavinov/zakupcheck-44fz-retrieval-benchmark),
+зафиксированная версия проекта — [`v1.0.0`](https://huggingface.co/datasets/SergeySavinov/zakupcheck-44fz-retrieval-benchmark/tree/v1.0.0).
 
-## Текущий статус retriever
+Система должна принимать извещение и его приложения, находить потенциально
+проблемные места и возвращать не просто вывод модели, а проверяемое замечание:
 
-Актуальная экспериментальная схема разделяет поиск статей и выбор точных
-фрагментов:
+- дословный фрагмент документа;
+- норму 44-ФЗ и дословную цитату из неё;
+- тип возможного нарушения;
+- вердикт `violation`, `uncertain` или `insufficient_evidence`.
 
-1. Dense `Roflmax/bge-m3-russian-legal` на структурных `m700`-чанках и BM25
-   на `m1500` независимо дают по 10 статей.
-2. Для каждой статьи cross-encoder `qilowoq/bge-reranker-v2-m3-en-ru` оценивает два
-   предварительных `m700`-чанка.
-3. Ранги статей объединяются three-way RRF: `k=30`, веса dense:BM25:CE
-   `1:1:2`. В article top-10 остаётся по одному представительному чанку на статью.
-4. Для генератора строится отдельный evidence pack: до 8 кандидатов на статью,
-   не более 2 финальных чанков на статью, порог CE-score `0.25`, hierarchy bonus
-   `0.05` и оценочный бюджет 3000 токенов.
+ZakupCheck задуман как помощник эксперту: он подготавливает места для проверки,
+но не заменяет юриста или ФАС и не выдаёт юридическое заключение.
 
-На 52 `dev/blind`-кейсах article-stage даёт article R@10 `0.731`, exact R@10 `0.202`
-и all-hit article@10 `0.712`. Evidence pack сохраняет article R@10 `0.731` и поднимает
-exact recall до `0.314` при 17.6 чанка и примерно 2692 условных токенах в среднем.
-Сохранённый one-shot `eval/blind` snapshot (исходный BF16-run, reporting-only) дал article R@10
-`0.621` и exact R@10 `0.152` против `0.553/0.136` у dense baseline; 95% CI article-разницы
-`[-0.045; +0.182]`. Eval не перезапускался после FP32-контроля и не использовался для подбора.
+## Для кого и для чего
 
-### BF16 и FP32
+Проект рассматривает два сценария работы с одним и тем же пайплайном:
 
-Зафиксированная архитектура повторно проверена в FP32 без подмешивания BF16-scores.
-Победитель и recall не изменились; порядок top-10 чанков полностью совпал в 38 из 52
-кейсов. На текущем CPU BF16 даёт 6.44 пары/с против 2.52 пары/с у FP32;
-расчётная CE-latency зафиксированного pipeline — 14.0 и 35.7 с/запрос соответственно.
-Поэтому BF16 — предпочтительный CPU deployment-режим, а FP32 — контрольный эталон.
+1. **Самопроверка заказчика.** До публикации закупки проверить извещение и
+   приложения, отдавая приоритет полноте найденных проблем.
+2. **Проверка участником.** После публикации сопоставить конкретный довод или
+   фрагмент документа с нормами закона, отдавая приоритет точности обоснования.
 
-### m1000
+Основной исследовательский вопрос текущего этапа: как локально, без облачных
+моделей, находить в полном тексте 44-ФЗ нужную статью и точную норму по языку
+жалобы или закупочного документа.
 
-`m1000` остаётся исследовательским вариантом. Его лучший dev exact recall равен `0.353`
-против `0.314` у `m700`, но парная разница `+0.038` имеет 95% CI `[-0.040; +0.119]`.
-Различие не доказано; FP32 evidence-reranking занимает 36.9 с/запрос против 31.3 с у `m700`.
-Eval для этого подбора не использовался.
+## Как должен работать пайплайн
 
-### Baseline E
+```text
+извещение и приложения
+        ↓
+извлечение фрагментов и кандидатов нарушений
+        ↓
+поиск релевантных статей 44-ФЗ (BM25 + dense)
+        ↓
+cross-encoder reranking и выбор точных фрагментов нормы
+        ↓
+локальная LLM формирует замечание с дословными цитатами из документа и норм
+        ↓
+валидаторы проверяют существование нормы и дословность цитат
+```
 
-Baseline E не ищет по тексту закона: он получает уже известный `issue_type` и
-возвращает замороженный список норм. Честная leave-one-`case_group_id`-out оценка
-на dev дала article/exact R@10 `0.750/0.571`. Замороженная full-dev таблица на eval дала
-`0.727/0.606`, а на типах, встречавшихся в dev, article R@10 равен `0.842`.
+Закон хранится как дерево адресуемых норм — статья, часть, пункт. Поисковые
+чанки используются только для retrieval и не подменяют юридическую ссылку на
+норму. Редакция закона выбирается по дате публикации извещения.
 
-Это oracle upper bound, потому что тип взят из ручной разметки. Post-hoc zero-shot overlay
-для двух eval-only типов показал `0.864/0.742`, но не считается слепым eval. Для
-end-to-end оценки ещё нужно заменить gold `issue_type` на выход эвристики или LLM.
+## Текущий статус
 
-## Документы
+Сейчас это **не готовое пользовательское приложение**, а воспроизводимый
+исследовательский стенд. Завершён первый этап — корпус и сравнение retrieval:
 
-- [DESIGN.md](DESIGN.md) — дизайн (постановка, корпус, eval, план)
-- [docs/Отчёт_llama-bench_T-lite.md](docs/Отчёт_llama-bench_T-lite.md) — замеры инференса
-- [evals/reports/retrieval_error_analysis.md](evals/reports/retrieval_error_analysis.md) — сводный анализ retriever
-- [evals/reports/article_shortlist_fusion.md](evals/reports/article_shortlist_fusion.md) — article shortlist и BF16/FP32
-- [evals/reports/m1000_evidence_comparison.md](evals/reports/m1000_evidence_comparison.md) — `m700` против `m1000`
-- [evals/reports/chunking_ab_comparison.md](evals/reports/chunking_ab_comparison.md) — structural против fixed-window
-- [evals/reports/chunking_role_comparison.md](evals/reports/chunking_role_comparison.md) — article retrieval и evidence packing при равных бюджетах
-- [evals/reports/baseline_e.md](evals/reports/baseline_e.md) — oracle `issue_type → нормы`
-- [evals/reports/reranker_runtime_comparison.md](evals/reports/reranker_runtime_comparison.md) — runtime и квантование
-- [evals/reports/law_corpus_audit.md](evals/reports/law_corpus_audit.md) — аудит корпуса
+- загрузка и структурный парсинг редакций 44-ФЗ;
+- загрузка решений ФАС и извещений ЕИС;
+- eval-набор по доводам жалоб с разметкой статей, точных норм и `issue_type`;
+- BM25, dense retrieval, гибридный поиск и cross-encoder reranking;
+- сравнение структурного и fixed-window чанкинга;
+- анализ ошибок, доверительные интервалы и Baseline E
+  (`issue_type → фиксированный список норм`);
+- локальные CPU-бенчмарки моделей.
 
-## Структура
+Генерация итоговых замечаний и сквозной пользовательский пайплайн ещё не
+реализованы. Ближайший следующий этап — связать найденные нормы с фрагментами
+извещения, добавить генерацию с обязательными цитатами и валидаторы
+groundedness. Актуальные границы и план описаны в [DESIGN.md](DESIGN.md).
 
-См. §12 в DESIGN.md. Сырые данные и результаты парсинга — только в `data/` (не в git).
+## Зафиксированная retrieval-конфигурация
 
-## Локальные зависимости вне репо
+Текущий основной вариант сначала выбирает статьи, затем отдельно собирает
+точные доказательства:
 
-- **llama.cpp** — собирать отдельно (например `~/llama.cpp`), не клонировать сюда.
-- **Модели GGUF** — например `~/models/t-lite/T-lite-it-2.1-Q5_K_M.gguf`.
-- Инференс MVP: `llama-server` + Q5_K_M + Vulkan (`-ngl 99`).
+- dense `Roflmax/bge-m3-russian-legal` на структурных `m700`-чанках;
+- BM25 на структурных `m1500`-чанках;
+- по 10 статей от каждого источника;
+- cross-encoder `qilowoq/bge-reranker-v2-m3-en-ru`;
+- three-way RRF по dense, BM25 и cross-encoder;
+- отдельный evidence pack с несколькими точными фрагментами на статью.
 
-## Быстрый старт
+На 52 `dev/blind`-кейсах article-stage достигает article R@10 `0.731`, а
+evidence pack сохраняет эту полноту по статьям и повышает exact recall с
+`0.202` до `0.314`. Сохранённый one-shot `eval/blind` snapshot дал article
+R@10 `0.621` против `0.553` у dense baseline; 95% доверительный интервал
+разницы — `[-0.045; +0.182]`, поэтому выигрыш на текущем eval ещё нельзя
+считать доказанным.
+
+Baseline E с известным вручную `issue_type` даёт на eval article/exact R@10
+`0.727/0.606`. Это oracle upper bound, а не результат end-to-end системы:
+в реальной работе тип нарушения ещё потребуется определить по документу.
+
+Подробные настройки, вторичные метрики и ограничения вынесены из README в
+[сводный анализ retriever](evals/reports/retrieval_error_analysis.md).
+
+## Структура репозитория
+
+```text
+src/data_access/  загрузка и проверка публичного benchmark с Hugging Face
+src/ingest/       загрузка и разбор закона, решений ФАС и извещений
+src/schemas/      модели корпуса и eval-кейсов
+src/index/        BM25, dense, fusion, reranking и метрики
+src/validate/     проверка eval-разметки
+scripts/          воспроизводимые загрузки и эксперименты
+evals/            manifest, конфигурации и агрегированные отчёты
+tests/            unit-тесты
+data/             локальные документы, корпуса и кэши (не публикуются в git)
+```
+
+## Установка
+
+Требуется Python 3.11 или новее.
 
 ```bash
 python -m venv .venv
 source .venv/bin/activate
-pip install -e .
 
-# Скачать актуальную редакцию 44-ФЗ → data/law/{edition_id}/
+# Базовый проект и тесты
+pip install -e '.[dev]'
+
+# Зависимости retrieval-моделей
+pip install -e '.[retrieval]'
+
+# Парсинг PDF/DOCX материалов ФАС
+pip install -e '.[fas]'
+
+# Загрузка публичного benchmark с Hugging Face
+pip install -e '.[data]'
+```
+
+Для OCR сканов дополнительно нужны системные `tesseract-ocr` с русским
+языковым пакетом и `poppler-utils`; для старых `.doc`/`.rtf` — LibreOffice.
+
+## Минимальный рабочий сценарий
+
+Скачать опубликованный benchmark `v1.0.0` и проверить его контрольные суммы:
+
+```bash
+python scripts/download_public_dataset.py
+```
+
+Данные появятся в
+`data/hf/zakupcheck-44fz-retrieval-benchmark/v1.0.0/`. Путь можно изменить
+через `--output-dir`, а другую версию выбрать через `--revision`. Загрузчик
+проверяет `SHA256SUMS`, release manifest, число кейсов и отсутствие открытых
+gold-меток в `eval`.
+
+Публичный `dev` можно передавать существующим retrieval-скриптам вместо
+закрытого каталога `evals/cases`:
+
+```bash
+python scripts/run_eval.py \
+  --cases-dir data/hf/zakupcheck-44fz-retrieval-benchmark/v1.0.0 \
+  --max-chunk 1500 \
+  --query blind
+```
+
+Публичный `eval` загружается тем же loader, но его поля разметки равны `null`,
+поэтому он предназначен для получения предсказаний, а не для локального
+расчёта метрик. `load_verified()` автоматически исключает такие неразмеченные
+кейсы. Полный список, включая blind eval, доступен через Python API:
+
+```python
+from pathlib import Path
+
+from data_access.public_dataset import load_public_cases
+
+cases = load_public_cases(
+    Path("data/hf/zakupcheck-44fz-retrieval-benchmark/v1.0.0")
+)
+dev = [case for case in cases if case.split == "dev"]
+eval_blind = [case for case in cases if case.split == "eval"]
+```
+
+HF-датасет содержит benchmark-кейсы, но не корпус закона. Для retrieval-прогона
+редакцию 44-ФЗ по-прежнему нужно скачать и построить локально:
+
+Скачать актуальную редакцию 44-ФЗ и построить структурный корпус:
+
+```bash
 python scripts/download_law.py
-python scripts/download_law.py --list-redactions   # список rdk
-# python scripts/download_law.py --rdk 157
+python scripts/build_law_corpus.py
+```
 
-# Жалоба / извещение ЕИС по номеру → data/raw/fas|notices/ (+ сырой текст; без разметки eval)
-# python scripts/download_fas.py complaint --number 202600132489017625 --insecure
-# python scripts/download_fas.py notice --number 0373100062626000058 --insecure
-# Связать уже скачанные (reuse notice, без повторной загрузки):
-# python scripts/download_fas.py link --complaint-dir data/raw/fas/202600132489017625 --link-only
-# python scripts/download_fas.py complaint --number … --with-notice --link-only
-# Пакетно (список номеров → жалобы + извещения + отчёт в evals/batch_reports/):
-# python scripts/batch_download_fas.py --numbers-file evals/numbers_fas.txt --with-notice --insecure
-# pip install 'zakup-check[fas]'   # PDF/CFF (pypdf + fontTools) + DOCX→Markdown (mammoth)
-# OCR-fallback для сканов: системные tesseract-ocr (+ tessdata-rus) и poppler-utils
-# .doc/.rtf: системный LibreOffice (soffice / libreoffice-writer)
+Посмотреть доступные редакции или явно выбрать одну:
 
-# Проверить retrieval-разметку; ключ записи пересобирает замороженный manifest
+```bash
+python scripts/download_law.py --list-redactions
+python scripts/download_law.py --rdk 157
+```
+
+Проверить целостность eval-разметки и запустить тесты:
+
+```bash
 python scripts/validate_eval_cases.py
-python scripts/validate_eval_cases.py --write-manifest
-
-# Воспроизвести FP32-проверку article-stage на dev
-python scripts/run_article_shortlist_fusion_eval.py --precision fp32 --focused
-
-# Повторить evidence-grid m700/m1000 на dev
-python scripts/run_m1000_evidence_eval.py
-
-# Собрать fixed-window corpus и сравнить BM25/dense/hybrid с structural
-python scripts/run_chunking_comparison.py
-
-# Разделить оценку article retrieval и evidence packing
-python scripts/run_chunking_role_eval.py
-
-# Baseline E: dev group-holdout (без eval) и явный frozen-eval
-python scripts/run_baseline_e_eval.py
-python scripts/run_baseline_e_eval.py --split eval
-
-# Запустить unit-тесты без сетевого download-теста
 pytest -q --ignore=tests/test_download_fas.py
 ```
 
-Модельные прогоны используют локальные кэши в `data/analysis/`. Eval-кейсы и модели в git
-не публикуются. Повторный запуск explicit `eval` не нужен для dev-подбора: сохранённые eval-
-результаты считаются reporting-only.
+Скачать отдельную жалобу или извещение можно по номеру:
 
-Артефакты загрузки: `edition.json`, `full_text.txt`, `blocks.jsonl`, `raw/source.html`
-(далее — `scripts/build_law_corpus.py` → NormUnit / Chunk).
-Сырые данные: `data/raw/fas/{номер_жалобы}/`, `data/raw/notices/{regNumber}/`.
+```bash
+python scripts/download_fas.py complaint --number 202600132489017625 --insecure
+python scripts/download_fas.py notice --number 0373100062626000058 --insecure
+```
 
-## Лицензия данных
+Сырые документы сохраняются в `data/raw/`, публичный snapshot — в `data/hf/`,
+построенные корпуса и модельные кэши — в других подкаталогах `data/`. Эта
+директория не публикуется в git.
 
-В репозитории публикуется только код. Документы ЕИС/ФАС и дампы закона скачиваются локально скриптами.
+### Подготовка публичных eval-кейсов
+
+Исходные кейсы не следует редактировать для публикации. Отдельные команды
+строят локальный privacy-аудит и обезличенную копию-кандидат:
+
+```bash
+python scripts/audit_eval_privacy.py
+python scripts/export_public_eval_cases.py
+```
+
+Автоматический проход закрывает структурированные идентификаторы и типичные
+формы русских ФИО. Пропущенные сущности добавляются в отдельный JSON по образцу
+`evals/public_redactions.example.json` и передаются обеим командам через
+`--redactions`. Результат сохраняется в `data/public/`, не содержит локальных
+путей и оффсетов и всегда помечается как требующий ручной покейсовой проверки.
+По умолчанию gold-разметка `eval` не экспортируется; её раскрытие требует
+явного флага `--include-eval-labels`.
+
+После ручной покейсовой проверки кандидат собирается в отдельный неизменяемый
+release-каталог. Финализатор требует выбранную лицензию данных, фиксирует
+проверяющего, проверяет отсутствие eval-меток и локальных путей и создаёт
+dataset card с контрольными суммами:
+
+```bash
+python scripts/finalize_public_dataset.py \
+  --version 1.0.0 \
+  --reviewed-by "privacy-reviewer" \
+  --license-file path/to/reviewed-data-license.md
+```
+
+Готовый каталог появляется в
+`data/public/releases/zakupcheck-benchmark-1.0.0/`. Существующий release
+финализатор не перезаписывает.
+
+## Воспроизведение исследований
+
+Основные команды текущего этапа:
+
+```bash
+# Зафиксированный article-stage и evidence selection
+python scripts/run_article_shortlist_fusion_eval.py --precision fp32 --focused
+python scripts/run_m1000_evidence_eval.py
+
+# Сравнение способов чанкинга
+python scripts/run_chunking_comparison.py
+python scripts/run_chunking_role_eval.py
+
+# Baseline E: честный dev group-holdout и отдельный frozen eval
+python scripts/run_baseline_e_eval.py
+python scripts/run_baseline_e_eval.py --split eval
+```
+
+Модельные прогоны используют локальные кэши в `data/analysis/`. Eval-кейсы и
+веса моделей в git не публикуются. `eval` используется только для однократной
+отчётной проверки, а не для подбора конфигурации.
+
+## Документация и отчёты
+
+- [DESIGN.md](DESIGN.md) — постановка задачи, ограничения, архитектура и план;
+- [сводный анализ retriever](evals/reports/retrieval_error_analysis.md) — результаты и причины ошибок;
+- [article shortlist и BF16/FP32](evals/reports/article_shortlist_fusion.md);
+- [сравнение `m700` и `m1000`](evals/reports/m1000_evidence_comparison.md);
+- [сравнение способов чанкинга](evals/reports/chunking_ab_comparison.md);
+- [роли article retrieval и evidence packing](evals/reports/chunking_role_comparison.md);
+- [Baseline E](evals/reports/baseline_e.md);
+- [runtime и квантование reranker](evals/reports/reranker_runtime_comparison.md);
+- [аудит корпуса закона](evals/reports/law_corpus_audit.md);
+- [CPU-бенчмарк локальной LLM](docs/Отчёт_llama-bench_T-lite.md).
+
+## Данные и ограничения
+
+В Git-репозитории публикуются код, небольшие конфигурации и агрегированные
+результаты. Обезличенные benchmark-кейсы распространяются отдельно через
+[Hugging Face](https://huggingface.co/datasets/SergeySavinov/zakupcheck-44fz-retrieval-benchmark).
+Тексты 44-ФЗ, исходные документы ЕИС/ФАС, закрытые gold-метки `eval` и
+модельные кэши в git и публичный датасет не входят.
+
+Результаты экспериментов относятся к текущему небольшому eval-набору и не
+доказывают юридическую корректность системы на произвольных закупках.
