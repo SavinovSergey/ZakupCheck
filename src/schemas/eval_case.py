@@ -178,6 +178,7 @@ class EvalCase(BaseModel):
 class Remark(BaseModel):
     """Выход пайплайна / генерации (DESIGN §2.2). Для eval faithfulness позже."""
 
+    remark_text: str | None = None
     doc_quote: str
     doc_span: DocLocator | None = None
     norm_id: str
